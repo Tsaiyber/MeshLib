@@ -106,6 +106,7 @@
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(ProjectDir)..\..\thirdparty;$(ProjectDir)\..\..\thirdparty\imgui\</AdditionalIncludeDirectories>
       <ForcedIncludeFiles>MRPch.h</ForcedIncludeFiles>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
