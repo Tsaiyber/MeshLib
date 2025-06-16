@@ -16,7 +16,7 @@ def get_vcpkg_root_from_where():
         print(e)
         return None
 
-def detect_vcpkg_python_version(vcpkg_root, triplet="x64-windows-meshlib"):
+def detect_vcpkg_python_version(vcpkg_root, triplet="x64-windows"):
     include_dir = vcpkg_root / "installed" / triplet / "include"
     if include_dir.exists():
         for entry in include_dir.iterdir():

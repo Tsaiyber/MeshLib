@@ -201,7 +201,7 @@ $(info MODE: $(MODE))
 
 # Look for MeshLib dependencies relative to this. On Linux should point to the project root, because that's where `./include` and `./lib` are.
 ifneq ($(IS_WINDOWS),)
-DEPS_BASE_DIR := $(VCPKG_DIR)/installed/x64-windows-meshlib
+DEPS_BASE_DIR := $(VCPKG_DIR)/installed/x64-windows
 DEPS_LIB_DIR := $(DEPS_BASE_DIR)/$(if $(filter Debug,$(VS_MODE)),debug/)lib
 else
 DEPS_BASE_DIR := .
