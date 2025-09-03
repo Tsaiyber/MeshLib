@@ -6,6 +6,7 @@
 #include "MRRibbonButtonDrawer.h"
 #include "MRAsyncTimer.h"
 #include "MRRibbonSchema.h"
+#include "MRRibbonMenuUIConfig.h"
 #include "MRMesh/MRSignal.h"
 #include "MRRibbonNotification.h"
 #include <type_traits>
@@ -15,26 +16,6 @@ namespace MR
 {
 
 class Object;
-
-enum class RibbonTopPanelLayoutMode
-{
-    None, ///< no top panel at all (toolbar is also forced hidden in this mode)
-    RibbonNoTabs, ///< show only icons from the first tab, without tabs panel
-    RibbonWithTabs ///< both ribbon toolbar and tabs
-};
-
-struct RibbonMenuUIConfig 
-{
-    RibbonTopPanelLayoutMode topLayout{ RibbonTopPanelLayoutMode::RibbonWithTabs }; ///< how to show top panel
-    bool centerRibbonItems{ false }; ///< if true - items on selected tab will be centered to have equal spacing from left and right (ignored top panel is hidden)
-
-    bool drawScenePanel{ true }; ///< if false - panel with scene tree, information and transform will be hidden
-    bool drawToolbar{ true }; ///< if false - toolbar will be hidden (ignored if top panel is hidden)
-    bool drawViewportTags{ true }; ///< if false - window with viewport label and id will be hidden
-    bool drawNotifications{ true }; ///< if false - no notifications are drawn on screen
-
-    bool operator==( const RibbonMenuUIConfig& ) const = default;
-};
 
 // Class to control and render ribbon-style menu
 // stores menu items,
@@ -247,21 +228,35 @@ protected:
     // this function changes internal sizes of topPanel when it is enabled or disabled
     MRVIEWER_API virtual void updateTopPanelSize_( bool drawTabs );
 
+    // draw quick access bar at header level
+    MRVIEWER_API virtual void drawHeaderQuickAccess_( float menuScaling );
+
+    // this functions draws header helpers:
+    //  1. Active tools list
+    //  2. Search bar
+    //  3. Help button
+    //  4. Ribbon pin/unpin button
+    // returns width available for drawing tabs
+    MRVIEWER_API virtual float drawHeaderHelpers_( float requiredTabSize, float menuScaling );
+
+    // helper list of active tools
+    MRVIEWER_API virtual void drawActiveListButton_( float btnSize );
+    // header helper search bar at panel 
+    MRVIEWER_API virtual void drawSearchButton_();
+    // header helper button to pin/unpin ribbon
+    MRVIEWER_API virtual void drawCollapseButton_();
+    // header helper button link to help page
+    MRVIEWER_API virtual void drawHelpButton_( const std::string& url );
+
     RibbonMenuSearch searcher_;
 
 private:
     void changeTab_( int newTab );
 
-    void drawSearchButton_();
-    void drawCollapseButton_();
-    void drawHelpButton_();
-
     void sortObjectsRecursive_( std::shared_ptr<Object> object );
 
     // part of top panel
-    void drawHeaderQuickAccess_();
     void drawHeaderPannel_();
-    void drawActiveListButton_( float btnSize );
 
     ImVec2 activeListPos_{ 0,0 };
     bool activeListPressed_{ false };

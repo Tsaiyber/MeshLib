@@ -1,7 +1,6 @@
 #pragma once
 
-#include "MRphmap.h"
-#include "MRVector.h"
+#include "MRMapOrHashMap.h"
 #include "MRBuffer.h"
 
 namespace MR
@@ -17,6 +16,13 @@ namespace MR
 }
 
 /// given input edge (src), converts its id using given map
+[[nodiscard]] inline UndirectedEdgeId mapEdge( const WholeEdgeMap & map, UndirectedEdgeId src )
+{
+    EdgeId eres = map[ src ];
+    return eres ? eres.undirected() : UndirectedEdgeId{};
+}
+
+/// given input edge (src), converts its id using given map
 [[nodiscard]] inline EdgeId mapEdge( const WholeEdgeHashMap & map, EdgeId src )
 {
     EdgeId res;
@@ -28,6 +34,31 @@ namespace MR
             res = res.sym();
     }
     return res;
+}
+
+/// given input edge (src), converts its id using given map
+[[nodiscard]] inline UndirectedEdgeId mapEdge( const WholeEdgeHashMap & map, UndirectedEdgeId src )
+{
+    auto it = map.find( src );
+    return it != map.end() ? it->second.undirected() : UndirectedEdgeId{};
+}
+
+/// given input edge (src), converts its id using given map
+[[nodiscard]] inline EdgeId mapEdge( const WholeEdgeMapOrHashMap & m, EdgeId src )
+{
+    return std::visit( overloaded{
+        [src]( const WholeEdgeMap& map ) { return mapEdge( map, src ); },
+        [src]( const WholeEdgeHashMap& hashMap ) { return mapEdge( hashMap, src ); }
+    }, m.var );
+}
+
+/// given input edge (src), converts its id using given map
+[[nodiscard]] inline UndirectedEdgeId mapEdge( const WholeEdgeMapOrHashMap & m, UndirectedEdgeId src )
+{
+    return std::visit( overloaded{
+        [src]( const WholeEdgeMap& map ) { return mapEdge( map, src ); },
+        [src]( const WholeEdgeHashMap& hashMap ) { return mapEdge( hashMap, src ); }
+    }, m.var );
 }
 
 /// given input edge (src), converts its id using given map

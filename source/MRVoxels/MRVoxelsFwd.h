@@ -21,12 +21,11 @@ namespace MR
 
 class ObjectVoxels;
 
-struct MRVOXELS_CLASS OpenVdbFloatGrid;
-using FloatGrid = std::shared_ptr<OpenVdbFloatGrid>;
+class FloatGrid;
 
 MR_CANONICAL_TYPEDEFS( (template <typename T> struct), MRVOXELS_CLASS VoxelsVolumeMinMax,
-    ( SimpleVolumeMinMax, VoxelsVolumeMinMax<std::vector<float>> )
-    ( SimpleVolumeMinMaxU16, VoxelsVolumeMinMax<std::vector<uint16_t>> )
+    ( SimpleVolumeMinMax, VoxelsVolumeMinMax<Vector<float, VoxelId>> )
+    ( SimpleVolumeMinMaxU16, VoxelsVolumeMinMax<Vector<uint16_t, VoxelId>> )
     ( VdbVolume, VoxelsVolumeMinMax<FloatGrid> )
 )
 
@@ -38,8 +37,9 @@ using VoxelValueGetter = std::function<T ( const Vector3i& )>;
 MR_CANONICAL_TYPEDEFS( (template <typename T> struct), MRVOXELS_CLASS VoxelsVolume,
     ( FunctionVolume, VoxelsVolume<VoxelValueGetter<float>> )
     ( FunctionVolumeU8, VoxelsVolume<VoxelValueGetter<uint8_t>> )
-    ( SimpleVolume, VoxelsVolume<std::vector<float>> )
-    ( SimpleVolumeU16, VoxelsVolume<std::vector<uint16_t>> )
+    ( SimpleVolume, VoxelsVolume<Vector<float, VoxelId>> )
+    ( SimpleVolumeU16, VoxelsVolume<Vector<uint16_t, VoxelId>> )
+    ( SimpleBinaryVolume, VoxelsVolume<VoxelBitSet> )
 )
 
 namespace VoxelsLoad

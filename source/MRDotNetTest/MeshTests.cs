@@ -104,6 +104,38 @@ namespace MR.Test
         }
 
         [Test]
+        public void TestFromTrianglesDuplicating()
+        {
+            List<Vector3f> points = new List<Vector3f>();
+            points.Add(new Vector3f(0, 0, 0));
+            points.Add(new Vector3f(0, 1, 0));
+            points.Add(new Vector3f(1, 1, 0));
+            points.Add(new Vector3f(1, 0, 0));
+            points.Add(new Vector3f(0, 0, 1));
+            points.Add(new Vector3f(0, 1, 1));
+            points.Add(new Vector3f(1, 1, 1));
+            points.Add(new Vector3f(1, 0, 1));
+
+            List<ThreeVertIds> triangles = new List<ThreeVertIds>();
+            triangles.Add(new ThreeVertIds(0, 1, 2));
+            triangles.Add(new ThreeVertIds(2, 3, 0));
+            triangles.Add(new ThreeVertIds(0, 4, 5));
+            triangles.Add(new ThreeVertIds(5, 1, 0));
+            triangles.Add(new ThreeVertIds(0, 3, 7));
+            triangles.Add(new ThreeVertIds(7, 4, 0));
+            triangles.Add(new ThreeVertIds(6, 5, 4));
+            triangles.Add(new ThreeVertIds(4, 7, 6));
+            triangles.Add(new ThreeVertIds(1, 5, 6));
+            triangles.Add(new ThreeVertIds(6, 2, 1));
+            triangles.Add(new ThreeVertIds(6, 7, 3));
+            triangles.Add(new ThreeVertIds(3, 2, 6));
+
+            var mesh = Mesh.FromTrianglesDuplicatingNonManifoldVertices(points, triangles);
+            Assert.That(mesh.Points.Count == 8);
+            Assert.That(mesh.Triangulation.Count == 12);
+        }
+
+        [Test]
         public void TestEmptyFile()
         {
             string path = Path.GetTempFileName() + ".mrmesh";
@@ -253,6 +285,17 @@ namespace MR.Test
         }
 
         [Test]
+        public void TestToTriPoint()
+        {
+            var cubeMesh = Mesh.MakeCube(Vector3f.Diagonal(1), Vector3f.Diagonal(-0.5f));
+            var triVerts = cubeMesh.GetTriVerts(new FaceId(0));
+            var centerPoint = (cubeMesh.Points[triVerts[1].Id] + cubeMesh.Points[triVerts[2].Id]) * 0.5f;
+            var triPoint = cubeMesh.ToTriPoint(new FaceId(0), centerPoint);
+            Assert.That(triPoint.bary.a,Is.EqualTo( 0.5f));
+            Assert.That(triPoint.bary.b, Is.EqualTo(0.5f));
+        }
+
+        [Test]
         public void TestCalculatingVolume()
         {
             var cubeMesh = Mesh.MakeCube(Vector3f.Diagonal(1), Vector3f.Diagonal(-0.5f));
@@ -315,6 +358,27 @@ namespace MR.Test
         }
 
         [Test]
+        public void TestMeshMeshDistance()
+        {
+            var sphere1 = Mesh.MakeUVSphere(1, 8, 8);
+
+            var wholeSphere1 = new MeshPart(sphere1);
+            var d11 = Mesh.FindDistance(wholeSphere1, wholeSphere1);
+            Assert.That(d11.distanceSquared, Is.EqualTo(0));
+
+            var zShift = new AffineXf3f(new Vector3f(0.0f, 0.0f, 3.0f));
+            var d1z = Mesh.FindDistance(wholeSphere1, wholeSphere1, zShift);
+            Assert.That(d1z.distanceSquared, Is.EqualTo(1));
+
+            Mesh sphere2 = Mesh.MakeUVSphere(2, 8, 8);
+
+            var wholeSphere2 = new MeshPart(sphere2);
+            var d12 = Mesh.FindDistance(wholeSphere1, wholeSphere2);
+            var dist12 = Math.Sqrt(d12.distanceSquared);
+            Assert.That(dist12, Is.InRange(0.9, 1.0));
+        }
+
+        [Test]
         public void TestValidPoints()
         {
             Assert.DoesNotThrow(() =>
@@ -365,6 +429,13 @@ namespace MR.Test
 
             cubeMesh.DeleteFaces(faces);
             Assert.That(cubeMesh.Area(), Is.EqualTo(3.0).Within(0.001));
+
+            var holes = RegionBoundary.FindRightBoundary(cubeMesh);
+            Assert.That(holes.Count, Is.EqualTo(1));
+            Assert.That(holes[0].Count, Is.EqualTo(6));
+
+            var hole0 = RegionBoundary.TrackRightBoundaryLoop(cubeMesh, holes[0][0]);
+            Assert.That(hole0, Is.EqualTo(holes[0]));
         }
 
         [Test]

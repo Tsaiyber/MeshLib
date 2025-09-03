@@ -42,7 +42,15 @@ Expected<FloatGrid> polylineToDistanceField( const Polyline3& polyline, const Po
     MR_TIMER;
 
     const Mesh mesh = polylineToDegenerateMesh( polyline );
-    return meshToDistanceField( mesh, {}, params.voxelSize, params.offsetCount, params.cb );
+
+    auto shift = AffineXf3f::translation( mesh.computeBoundingBox( {}, &params.worldXf ).min
+        - params.offsetCount * params.voxelSize );
+    AffineXf3f xf = shift.inverse() * params.worldXf;
+
+    if ( params.outXf )
+        *params.outXf = shift;
+
+    return meshToDistanceField( mesh, xf, params.voxelSize, params.offsetCount, params.cb );
 }
 
 Expected<VdbVolume> polylineToVdbVolume( const Polyline3& polyline, const PolylineToDistanceVolumeParams& params )
@@ -52,6 +60,15 @@ Expected<VdbVolume> polylineToVdbVolume( const Polyline3& polyline, const Polyli
     meshParams.voxelSize = params.voxelSize;
     meshParams.surfaceOffset = params.offsetCount;
     meshParams.cb = params.cb;
+    meshParams.type = MeshToVolumeParams::Type::Unsigned;
+
+    auto shift = AffineXf3f::translation( mesh.computeBoundingBox( {}, &params.worldXf ).min
+        - params.offsetCount * params.voxelSize );
+    meshParams.worldXf = shift.inverse() * params.worldXf;
+    
+    if ( params.outXf )
+        *params.outXf = shift;
+
     return meshToDistanceVdbVolume( mesh, meshParams );
 }
 
@@ -61,6 +78,7 @@ Expected<SimpleVolume> polylineToSimpleVolume( const Polyline3& polyline, const 
     MeshToDistanceVolumeParams meshParams;
     meshParams.vol = params.vol;
     meshParams.dist = { params.dist };
+    meshParams.dist.signMode = SignDetectionMode::Unsigned;
     return meshToDistanceVolume( mesh, meshParams );
 }
 
@@ -70,6 +88,7 @@ Expected<FunctionVolume> polylineToFunctionVolume( const Polyline3& polyline, co
     MeshToDistanceVolumeParams meshParams;
     meshParams.vol = params.vol;
     meshParams.dist = { params.dist };
+    meshParams.dist.signMode = SignDetectionMode::Unsigned;
     return meshToDistanceFunctionVolume( mesh, meshParams );
 }
 

@@ -1,11 +1,13 @@
 #pragma once
 
+#include "MRPch/MRBindingMacros.h"
 #include "MRMeshFwd.h"
 #include "MRProgressCallback.h"
 #include "MRConstants.h"
 #include <cfloat>
 #include <climits>
 #include <functional>
+#include <optional>
 
 namespace MR
 {
@@ -182,7 +184,7 @@ struct DecimateResult
 };
 
 /**
- * \brief Collapse edges in mesh region according to the settings
+ * \brief Performs mesh simplification in mesh region according to the settings
  * \ingroup DecimateGroup
  * \snippet cpp-examples/MeshDecimate.dox.cpp 0
  *
@@ -190,6 +192,15 @@ struct DecimateResult
  * \image html decimate/decimate_after.png "After" width = 350cm
  */
 MRMESH_API DecimateResult decimateMesh( Mesh & mesh, const DecimateSettings & settings = {} );
+
+/// Performs mesh simplification with per-element attributes according to given settings;
+/// \detail settings.region must be null, and real simplification region will be data face selection (or whole mesh if no face selection)
+MRMESH_API DecimateResult decimateObjectMeshData( ObjectMeshData & data, const DecimateSettings & settings );
+
+/// returns the data of decimated mesh given ObjectMesh (which remains unchanged) and decimation parameters
+[[nodiscard]] MRMESH_API std::optional<ObjectMeshData> makeDecimatedObjectMeshData( const ObjectMesh & obj, const DecimateSettings & settings,
+    DecimateResult * outRes = nullptr );
+
 
 /**
  * \brief Computes quadratic form at given vertex of the initial surface before decimation
@@ -212,36 +223,36 @@ MRMESH_API DecimateResult decimateMesh( Mesh & mesh, const DecimateSettings & se
 
 struct ResolveMeshDegenSettings
 {
-    [[deprecated]]
-    int maxIters = 1;
     /// maximum permitted deviation from the original surface
     float maxDeviation = 0;
+
     /// edges not longer than this value will be collapsed ignoring normals and aspect ratio checks
     float tinyEdgeLength = 0;
+
     /// Permit edge flips if it does not change dihedral angle more than on this value
     float maxAngleChange = PI_F / 3;
+
     /// the algorithm will ignore dihedral angle check if one of triangles had aspect ratio equal or more than this value;
     /// and the algorithm will permit temporary increase in aspect ratio after collapse, if before collapse one of the triangles had larger aspect ratio
     float criticalAspectRatio = 10000;
+
     /// Small stabilizer is important to achieve good results on completely planar mesh parts,
     /// if your mesh is not-planer everywhere, then you can set it to zero
     float stabilizer = 1e-6f;
+
     /// degenerations will be fixed only in given region, which is updated during the processing
     FaceBitSet * region = nullptr;
 };
 
 /**
- * \brief Resolves degenerate triangles in given mesh
- * \details This function performs decimation, so it can affect topology
+ * \brief Removes degenerate triangles in a mesh by calling decimateMesh function with appropriate settings
+ * \details consider using \ref fixMeshDegeneracies for more complex cases
  * \ingroup DecimateGroup
  * \return true if the mesh has been changed
  *
  * \sa \ref decimateMesh
  */
-[[deprecated( " use `MR::fixMeshDegeneracies` instead" )]]
-MRMESH_API bool resolveMeshDegenerations( Mesh& mesh, const ResolveMeshDegenSettings & settings = {} );
-[[deprecated( " use `MR::fixMeshDegeneracies` instead" )]]
-MRMESH_API bool resolveMeshDegenerations( Mesh& mesh, int maxIters, float maxDeviation = 0, float maxAngleChange = PI_F / 3, float criticalAspectRatio = 10000 );
+MRMESH_API bool resolveMeshDegenerations( Mesh & mesh, const ResolveMeshDegenSettings & settings = {} );
 
 
 struct RemeshSettings

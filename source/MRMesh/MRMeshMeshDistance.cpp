@@ -1,14 +1,13 @@
 #include "MRMeshMeshDistance.h"
 #include "MRAABBTree.h"
+#include "MRInplaceStack.h"
 #include "MRMesh.h"
 #include "MRTriDist.h"
 #include "MRTimer.h"
-#include "MRMakeSphereMesh.h"
 #include "MRMeshCollide.h"
 #include "MRRegionBoundary.h"
 #include "MRBitSetParallelFor.h"
 #include "MRRingIterator.h"
-#include "MRGTest.h"
 #include "MRPch/MRTBB.h"
 
 namespace MR
@@ -42,39 +41,31 @@ MeshMeshDistanceResult findDistance( const MeshPart& a, const MeshPart& b, const
         bNodesPtr = &bNodes;
     }
 
-
     struct SubTask
     {
-        NodeId a, b;
+        NoInitNodeId a, b;
         float distSq;
-        SubTask() : a( noInit ), b( noInit ) {}
-        SubTask( NodeId a, NodeId b, float dd ) : a( a ), b( b ), distSq( dd ) {}
     };
-
-    constexpr int MaxStackSize = 128; // to avoid allocations
-    SubTask subtasks[MaxStackSize];
-    int stackSize = 0;
+    InplaceStack<SubTask, 128> subtasks;
 
     auto addSubTask = [&]( const SubTask& s )
     {
         if ( s.distSq < res.distSq )
-        {
-            assert( stackSize < MaxStackSize );
-            subtasks[stackSize++] = s;
-        }
+            subtasks.push( s );
     };
 
     auto getSubTask = [&]( NodeId a, NodeId b )
     {
         float distSq = aTree.nodes()[a].box.getDistanceSq( transformed( bTree.nodes()[b].box, rigidB2A ) );
-        return SubTask( a, b, distSq );
+        return SubTask { a, b, distSq };
     };
 
     addSubTask( getSubTask( aTree.rootNodeId(), bTree.rootNodeId() ) );
 
-    while ( stackSize > 0 )
+    while ( !subtasks.empty() )
     {
-        const auto s = subtasks[--stackSize];
+        const auto s = subtasks.top();
+        subtasks.pop();
         if ( aNodesPtr && !aNodes.test( s.a ) )
             continue;
         if ( bNodesPtr && !bNodes.test( s.b ) )
@@ -175,7 +166,7 @@ InternalZoneWithProjections findSignedDistanceOneWay( const MeshPart & a, const 
     InternalZoneWithProjections res;
     res.projectons.resize( ref.mesh.points.size(), { {}, 0.0f } );
 
-    while ( queue.count() != 0 )
+    while ( queue.any() )
     {
         tbb::enumerable_thread_specific<std::vector<VertId>> threadData;
         BitSetParallelFor( queue, threadData, [&]( VertId id, auto& localData )
@@ -302,24 +293,6 @@ float findMaxDistanceSq( const MeshPart& a, const MeshPart& b, const AffineXf3f*
 {
     std::unique_ptr<AffineXf3f> rigidA2B = rigidB2A ? std::make_unique<AffineXf3f>( rigidB2A->inverse() ) : nullptr;
     return std::max( findMaxDistanceSqOneWay( a, b, rigidB2A, maxDistanceSq ), findMaxDistanceSqOneWay( b, a, rigidA2B.get(), maxDistanceSq ) );
-}
-
-TEST(MRMesh, MeshDistance) 
-{
-    Mesh sphere1 = makeUVSphere( 1, 8, 8 );
-
-    auto d11 = findDistance( sphere1, sphere1, nullptr, FLT_MAX );
-    EXPECT_EQ( d11.distSq, 0 );
-
-    auto zShift = AffineXf3f::translation( Vector3f( 0, 0, 3 ) );
-    auto d1z = findDistance( sphere1, sphere1, &zShift, FLT_MAX );
-    EXPECT_EQ( d1z.distSq, 1 );
-
-    Mesh sphere2 = makeUVSphere( 2, 8, 8 );
-
-    auto d12 = findDistance( sphere1, sphere2, nullptr, FLT_MAX );
-    float dist12 = std::sqrt( d12.distSq );
-    EXPECT_TRUE( dist12 > 0.9f && dist12 < 1.0f );
 }
 
 } //namespace MR

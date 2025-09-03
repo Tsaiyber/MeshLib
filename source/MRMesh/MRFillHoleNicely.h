@@ -15,6 +15,9 @@ struct FillHoleNicelySettings
     /// If false then additional vertices are created inside the patch for best mesh quality
     bool triangulateOnly = false;
 
+    /// in triangulateOnly = false mode, edges specified by this bit-set will never be flipped, but they can be split so it is updated during the operation
+    UndirectedEdgeBitSet* notFlippable = nullptr;
+
     /// Subdivision is stopped when all edges inside or on the boundary of the region are not longer than this value
     float maxEdgeLen = 0;
 
@@ -47,6 +50,9 @@ struct FillHoleNicelySettings
 
     /// optional colors of vertices; if provided then elements corresponding to new vertices will be added there
     VertColors * colorMap = {};
+
+    /// optional colors of faces; if provided then elements corresponding to new faces will be added there
+    FaceColors * faceColors = {};
 };
 
 /// fills a hole in mesh specified by one of its edge,

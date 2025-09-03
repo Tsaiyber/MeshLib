@@ -1,17 +1,19 @@
 #pragma once
 
 #include "MRAffineXf3.h"
-#include "MRBox.h"
 #include "MRBitSet.h"
-#include "MRViewportProperty.h"
-#include "MRProgressCallback.h"
+#include "MRBox.h"
 #include "MRExpected.h"
+#include "MRProgressCallback.h"
 #include "MRSignal.h"
-#include <memory>
-#include <vector>
+#include "MRViewportProperty.h"
+
 #include <array>
-#include <future>
 #include <filesystem>
+#include <future>
+#include <memory>
+#include <set>
+#include <vector>
 
 namespace Json
 {
@@ -67,6 +69,14 @@ public:
     // return name of subtype for serialization purposes
     constexpr static const char* TypeName() noexcept { return "Object"; }
     virtual const char* typeName() const { return TypeName(); }
+
+    /// return human readable name of subclass
+    constexpr static const char* ClassName() noexcept { return "Object"; }
+    virtual std::string className() const { return ClassName(); }
+
+    /// return human readable name of subclass in plural form
+    constexpr static const char* ClassNameInPlural() noexcept { return "Objects"; }
+    virtual std::string classNameInPlural() const { return ClassNameInPlural(); }
 
     template <typename T>
     T * asType() { return dynamic_cast<T*>( this ); }
@@ -212,12 +222,6 @@ public:
     /// return several info lines that can better describe object in the UI
     MRMESH_API virtual std::vector<std::string> getInfoLines() const;
 
-    /// return human readable name of subclass
-    virtual std::string getClassName() const { return "Object"; }
-
-    /// return human readable name of subclass in plural form
-    virtual std::string getClassNameInPlural() const { return "Objects"; }
-
     /// creates futures that save this object subtree:
     ///   models in the folder by given path and
     ///   fields in given JSON
@@ -249,6 +253,17 @@ public:
     /// does the object have any model available (but possibly empty),
     /// e.g. ObjectMesh has valid mesh() or ObjectPoints has valid pointCloud()
     [[nodiscard]] virtual bool hasModel() const { return false; }
+
+    /// provides read-only access to the tag storage
+    /// the storage is a set of unique strings
+    const std::set<std::string>& tags() const { return tags_; }
+    /// adds tag to the object's tag storage
+    /// additionally calls ObjectTagManager::tagAddedSignal
+    /// NOTE: tags starting with a dot are considered as service ones and might be hidden from UI
+    MRMESH_API bool addTag( std::string tag );
+    /// removes tag from the object's tag storage
+    /// additionally calls ObjectTagManager::tagRemovedSignal
+    MRMESH_API bool removeTag( const std::string& tag );
 
     /// returns the amount of memory this object occupies on heap
     [[nodiscard]] MRMESH_API virtual size_t heapBytes() const;
@@ -297,6 +312,7 @@ protected:
     bool selected_{ false };
     bool ancillary_{ false };
     mutable bool needRedraw_{false};
+    std::set<std::string> tags_;
 
     // This calls `onWorldXfChanged_()` for all children recursively, which in turn emits `worldXfChangedSignal`.
     // This isn't virtual because it wouldn't be very useful, because it doesn't call itself on the children

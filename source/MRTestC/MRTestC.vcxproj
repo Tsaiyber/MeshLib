@@ -25,6 +25,7 @@
     <ClCompile Include="MRMeshDecimate.c" />
     <ClCompile Include="MRMeshExtrude.c" />
     <ClCompile Include="MRMeshFillHole.c" />
+    <ClCompile Include="MRMeshMeshDistance.c" />
     <ClCompile Include="MRMeshNormals.c" />
     <ClCompile Include="MRMeshOffset.c" />
     <ClCompile Include="MRMeshSubdivide.c" />
@@ -38,6 +39,7 @@
     <ClCompile Include="MRVector3.c" />
     <ClCompile Include="SimpleObjects.c" />
     <ClCompile Include="TestFunctions.c" />
+    <ClCompile Include="MRPointsToMeshProjector.c" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MRMeshC\MRMeshC.vcxproj">
@@ -59,6 +61,7 @@
     <ClInclude Include="MRMeshDecimate.h" />
     <ClInclude Include="MRMeshExtrude.h" />
     <ClInclude Include="MRMeshFillHole.h" />
+    <ClInclude Include="MRMeshMeshDistance.h" />
     <ClInclude Include="MRMeshNormals.h" />
     <ClInclude Include="MRMeshOffset.h" />
     <ClInclude Include="MRMeshSubdivide.h" />
@@ -72,6 +75,7 @@
     <ClInclude Include="MRMatrix3.h" />
     <ClInclude Include="MRVector3.h" />
     <ClInclude Include="SimpleObjects.h" />
+    <ClInclude Include="MRPointsToMeshProjector.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>

@@ -1,8 +1,10 @@
 #pragma once
-#include "MRVoxelsFwd.h"
 
+#include "MRVoxelsFwd.h"
 #include "MRMesh/MRExpected.h"
 #include "MRMesh/MRPartMapping.h"
+#include "MRMesh/MRVector3.h"
+#include <optional>
 
 namespace MR
 {
@@ -24,7 +26,7 @@ struct MergeVolumePartSettings
     PostCutCallback postCut = nullptr;
     /// callback to process the destination mesh after merging, usually to map the generated mesh's faces/edges/vertices
     /// the second parameter is identical to the `mapping` field, except for one case:
-    /// if the mapping is not initialized, only `src2tgtWholeEdgeHashMap` map will be provided (since it's used during processing)
+    /// if the mapping is not initialized, only `src2tgtEdges` map will be provided (since it's used during processing)
     using PostMergeCallback = std::function<void( Mesh&, const PartMapping& )>;
     PostMergeCallback postMerge = nullptr;
     /// mapping with initialized maps required for the `postMerge` callback

@@ -41,9 +41,6 @@
     <Filter Include="History">
       <UniqueIdentifier>{3070cea7-b1d9-4627-9d06-476b27257614}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ShortcutManager">
-      <UniqueIdentifier>{429a0a30-b790-4ca7-8292-82f8d34e9062}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Helpers">
       <UniqueIdentifier>{d3956742-dbdd-4b13-8187-f0add3cc770a}</UniqueIdentifier>
     </Filter>
@@ -82,6 +79,9 @@
     </Filter>
     <Filter Include="resource\textures">
       <UniqueIdentifier>{6bd35111-e84a-4284-9b50-7898d961d1fa}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UserInputs">
+      <UniqueIdentifier>{429a0a30-b790-4ca7-8292-82f8d34e9062}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -158,22 +158,22 @@
       <Filter>Viewer</Filter>
     </ClCompile>
     <ClCompile Include="MRShortcutManager.cpp">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClCompile>
     <ClCompile Include="MRRibbonFontManager.cpp">
       <Filter>RibbonMenu</Filter>
     </ClCompile>
     <ClCompile Include="MRTouchesHandler.cpp">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClCompile>
     <ClCompile Include="MRTouchesController.cpp">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClCompile>
     <ClCompile Include="MRMouseController.cpp">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClCompile>
     <ClCompile Include="MRTouchpadController.cpp">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClCompile>
     <ClCompile Include="MRRibbonButtonDrawer.cpp">
       <Filter>RibbonMenu</Filter>
@@ -253,11 +253,8 @@
     <ClCompile Include="MRShadowsGL.cpp">
       <Filter>Render</Filter>
     </ClCompile>
-    <ClCompile Include="MRSpaceMouseHandlerWindows.cpp">
-      <Filter>SpaceMouse</Filter>
-    </ClCompile>
     <ClCompile Include="MRSpaceMouseController.cpp">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClCompile>
     <ClCompile Include="MRWebRequest.cpp">
       <Filter>Requests</Filter>
@@ -280,9 +277,6 @@
     <ClCompile Include="MRShaderBlocks.cpp">
       <Filter>Render\Shaders</Filter>
     </ClCompile>
-    <ClCompile Include="MRSpaceMouseHandlerWindows.cpp">
-      <Filter>SpaceMouse</Filter>
-    </ClCompile>
     <ClCompile Include="MRMeshShader.cpp">
       <Filter>Render\Shaders</Filter>
     </ClCompile>
@@ -302,7 +296,7 @@
       <Filter>Viewer</Filter>
     </ClCompile>
     <ClCompile Include="MRTouchpadWin32Handler.cpp">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClCompile>
     <ClCompile Include="MRObjectPointsHistory.cpp">
       <Filter>History</Filter>
@@ -445,7 +439,7 @@
     <ClCompile Include="MRUISaveChangesPopup.cpp">
       <Filter>Helpers</Filter>
     </ClCompile>
-    <ClCompile Include="SceneReorder.cpp">
+    <ClCompile Include="MRSceneReorder.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="MRProjectMeshAttributes.cpp">
@@ -468,6 +462,27 @@
     </ClCompile>
     <ClCompile Include="MRModalDialog.cpp">
       <Filter>Helpers</Filter>
+    </ClCompile>
+    <ClCompile Include="MRDragDropWin32Handler.cpp">
+      <Filter>UserInputs</Filter>
+    </ClCompile>
+    <ClCompile Include="MRDragDropHandler.cpp">
+      <Filter>UserInputs</Filter>
+    </ClCompile>
+    <ClCompile Include="MRDragDropWasmHandler.cpp">
+      <Filter>UserInputs</Filter>
+    </ClCompile>
+    <ClCompile Include="MRRenderImGui.cpp">
+      <Filter>Render</Filter>
+    </ClCompile>
+    <ClCompile Include="MRRenderToImage.cpp">
+      <Filter>Render</Filter>
+    </ClCompile>
+    <ClCompile Include="MRVisualObjectTag.cpp">
+      <Filter>Render</Filter>
+    </ClCompile>
+    <ClCompile Include="MRViewportGlobalBasis.cpp">
+      <Filter>Viewer</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -583,19 +598,19 @@
       <Filter>Render</Filter>
     </ClInclude>
     <ClInclude Include="MRShortcutManager.h">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClInclude>
     <ClInclude Include="MRRibbonFontManager.h">
       <Filter>RibbonMenu</Filter>
     </ClInclude>
     <ClInclude Include="MRMouseController.h">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClInclude>
     <ClInclude Include="MRTouchesController.h">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClInclude>
     <ClInclude Include="MRTouchpadController.h">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClInclude>
     <ClInclude Include="MRRibbonButtonDrawer.h">
       <Filter>RibbonMenu</Filter>
@@ -666,11 +681,8 @@
     <ClInclude Include="MRSpaceMouseHandler.h">
       <Filter>SpaceMouse</Filter>
     </ClInclude>
-    <ClInclude Include="MRSpaceMouseHandlerWindows.h">
-      <Filter>SpaceMouse</Filter>
-    </ClInclude>
     <ClInclude Include="MRSpaceMouseController.h">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClInclude>
     <ClInclude Include="MRWebRequest.h">
       <Filter>Requests</Filter>
@@ -693,9 +705,6 @@
     <ClInclude Include="MRShaderBlocks.h">
       <Filter>Render\Shaders</Filter>
     </ClInclude>
-    <ClInclude Include="MRSpaceMouseHandlerWindows.h">
-      <Filter>SpaceMouse</Filter>
-    </ClInclude>
     <ClInclude Include="MRMeshShader.h">
       <Filter>Render\Shaders</Filter>
     </ClInclude>
@@ -715,7 +724,7 @@
       <Filter>Viewer</Filter>
     </ClInclude>
     <ClInclude Include="MRTouchpadWin32Handler.h">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClInclude>
     <ClInclude Include="MRObjectPointsHistory.h">
       <Filter>History</Filter>
@@ -733,7 +742,7 @@
       <Filter>RibbonMenu</Filter>
     </ClInclude>
     <ClInclude Include="MRTouchpadParameters.h">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClInclude>
     <ClInclude Include="MRViewportParametersAction.h">
       <Filter>History</Filter>
@@ -742,7 +751,7 @@
       <Filter>Helpers</Filter>
     </ClInclude>
     <ClInclude Include="MRSpaceMouseParameters.h">
-      <Filter>ShortcutManager</Filter>
+      <Filter>UserInputs</Filter>
     </ClInclude>
     <ClInclude Include="MRFitData.h">
       <Filter>Viewer</Filter>
@@ -894,7 +903,7 @@
     <ClInclude Include="MRUISaveChangesPopup.h">
       <Filter>Helpers</Filter>
     </ClInclude>
-    <ClInclude Include="SceneReorder.h">
+    <ClInclude Include="MRSceneReorder.h">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="MRProjectMeshAttributes.h">
@@ -921,9 +930,24 @@
     <ClInclude Include="MRModalDialog.h">
       <Filter>Helpers</Filter>
     </ClInclude>
+    <ClInclude Include="MRDragDropHandler.h">
+      <Filter>UserInputs</Filter>
+    </ClInclude>
+    <ClInclude Include="MRDragDropWin32Handler.h">
+      <Filter>UserInputs</Filter>
+    </ClInclude>
+    <ClInclude Include="MRRibbonMenuUIConfig.h">
+      <Filter>RibbonMenu</Filter>
+    </ClInclude>
+    <ClInclude Include="MRRenderImGui.h" />
+    <ClInclude Include="MRRenderToImage.h" />
+    <ClInclude Include="MRVisualObjectTag.h" />
+    <ClInclude Include="MRViewportGlobalBasis.h">
+      <Filter>Viewer</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\MeshLib\source\.editorconfig" />
+    <None Include="$(ProjectDir)..\.editorconfig" />
     <None Include="MRMacOSOpenDocumentsHandler.mm">
       <Filter>Viewer</Filter>
     </None>
@@ -1112,6 +1136,24 @@
     </Image>
     <Image Include="resource\textures\controller_cube_sides.png">
       <Filter>resource\textures</Filter>
+    </Image>
+    <Image Include="resource\independent_icons\X1\mouse left.png">
+      <Filter>resource\independent_icons\X1</Filter>
+    </Image>
+    <Image Include="resource\independent_icons\X1\mouse right.png">
+      <Filter>resource\independent_icons\X1</Filter>
+    </Image>
+    <Image Include="resource\independent_icons\X1\mouse scroll.png">
+      <Filter>resource\independent_icons\X1</Filter>
+    </Image>
+    <Image Include="resource\independent_icons\X3\mouse left.png">
+      <Filter>resource\independent_icons\X3</Filter>
+    </Image>
+    <Image Include="resource\independent_icons\X3\mouse right.png">
+      <Filter>resource\independent_icons\X3</Filter>
+    </Image>
+    <Image Include="resource\independent_icons\X3\mouse scroll.png">
+      <Filter>resource\independent_icons\X3</Filter>
     </Image>
   </ItemGroup>
 </Project>

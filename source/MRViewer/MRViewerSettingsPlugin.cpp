@@ -4,7 +4,8 @@
 #include "MRColorTheme.h"
 #include "MRMouseController.h"
 #include "MRViewport.h"
-#include "MRMesh/MRObjectsAccess.h"
+#include "MRFileDialog.h"
+#include "MRModalDialog.h"
 #include "MRCommandLoop.h"
 #include "MRViewerSettingsManager.h"
 #include "MRGLMacro.h"
@@ -12,23 +13,24 @@
 #include "MRRibbonConstants.h"
 #include "MRViewer.h"
 #include "MRImGuiVectorOperators.h"
-#include "MRMesh/MRSystem.h"
 #include "MRSpaceMouseHandlerHidapi.h"
-#include "MRMesh/MRLog.h"
-#include "MRPch/MRSpdlog.h"
 #include "MRUIStyle.h"
+#include "MRUnitSettings.h"
+#include "MRShowModal.h"
+#include "MRRibbonSceneObjectsListDrawer.h"
+#include "MRVoxels/MRObjectVoxels.h"
+#include "MRMesh/MRObjectsAccess.h"
+#include "MRMesh/MRSystem.h"
+#include "MRMesh/MRLog.h"
 #include "MRMesh/MRStringConvert.h"
 #include "MRMesh/MRSceneSettings.h"
 #include "MRMesh/MRDirectory.h"
 #include <MRMesh/MRSceneRoot.h>
-#include "MRFileDialog.h"
-#include "MRModalDialog.h"
 #include "MRMesh/MRObjectMesh.h"
-#include "MRRibbonSceneObjectsListDrawer.h"
-#include "MRUnitSettings.h"
-#include "MRShowModal.h"
 #include "MRMesh/MRObjectPointsHolder.h"
-#include "MRVoxels/MRObjectVoxels.h"
+#include "MRMesh/MRConfig.h"
+#include "MRPch/MRSpdlog.h"
+#include "MRViewportGlobalBasis.h"
 
 namespace
 {
@@ -190,6 +192,10 @@ bool ViewerSettingsPlugin::onEnable_()
 
 bool ViewerSettingsPlugin::onDisable_()
 {
+    if ( viewer )
+        if ( const auto& mgr = viewer->getViewerSettingsManager() )
+            mgr->saveSettings( *viewer );
+    Config::instance().writeToFile();
     userThemesPresets_.clear();
     return true;
 }
@@ -272,6 +278,14 @@ void ViewerSettingsPlugin::drawApplicationTab_( float menuWidth, float menuScali
     ImGui::PushStyleVar( ImGuiStyleVar_ItemSpacing, { style.ItemSpacing.x, style.ItemSpacing.y * 1.5f } );
     drawThemeSelector_( menuScaling );
 
+    ImGui::SetNextItemWidth( 200.0f * menuScaling );
+    UI::drag<RatioUnit>( "UI Scale", tempUserScaling_, 0.01f, 0.5f, 4.0f );
+    if ( ImGui::IsItemDeactivatedAfterEdit() )
+    {
+        viewer->getMenuPlugin()->setUserScaling( tempUserScaling_ );
+        tempUserScaling_ = viewer->getMenuPlugin()->getUserScaling();
+    }
+
     bool savedDialogsBackUp = viewer->getMenuPlugin()->isSavedDialogPositionsEnabled();
     bool savedDialogsVal = savedDialogsBackUp;
     UI::checkbox( "Save Tool Window Positions", &savedDialogsVal );
@@ -312,6 +326,11 @@ void ViewerSettingsPlugin::drawApplicationTab_( float menuWidth, float menuScali
                                                 std::bind( &RibbonMenu::getAutoCloseBlockingPlugins, ribbonMenu ),
                                                 std::bind( &RibbonMenu::setAutoCloseBlockingPlugins, ribbonMenu, std::placeholders::_1 ) );
         UI::setTooltipIfHovered( "Automatically close blocking tool when another blocking tool is activated", menuScaling );
+
+        UI::checkbox( "Sort Dropped Files",
+                                                std::bind( &Viewer::getSortDroppedFiles, viewer ),
+                                                std::bind( &Viewer::setSortDroppedFiles, viewer, std::placeholders::_1 ) );
+        UI::setTooltipIfHovered( "Whether to sort the filenames received from Drag&Drop in lexicographical order before adding them in scene", menuScaling );
 
         UI::checkbox( "Show Experimental Features", &viewer->experimentalFeatures );
         UI::setTooltipIfHovered( "Show experimental or diagnostic tools and controls", menuScaling );
@@ -443,9 +462,14 @@ void ViewerSettingsPlugin::drawViewportTab_( float menuWidth, float menuScaling 
     ImGui::SameLine();
 
     ImGui::SetCursorPosX( 155.0f * menuScaling );
-    bool showGlobalBasis = viewer->globalBasisAxes->isVisible( viewport.id );
+    bool showGlobalBasis = viewer->globalBasis->isVisible( viewport.id );
     UI::checkbox( "Show Global Basis", &showGlobalBasis );
     viewport.showGlobalBasis( showGlobalBasis );
+
+    ImGui::SameLine( 310 * menuScaling );
+    bool showGlobalBasisGrid = viewer->globalBasis->isGridVisible( viewport.id );
+    UI::checkboxValid( "Grid", &showGlobalBasisGrid, showGlobalBasis );
+    viewer->globalBasis->setGridVisible( showGlobalBasisGrid, viewport.id );
 
     ImGui::PushItemWidth( 170 * menuScaling );
     ImGui::PushStyleVar( ImGuiStyleVar_FramePadding, { style.FramePadding.x, cButtonPadding * menuScaling } );
@@ -456,12 +480,12 @@ void ViewerSettingsPlugin::drawViewportTab_( float menuWidth, float menuScaling 
     }
     else
     {
-        auto size = viewer->globalBasisAxes->xf( viewport.id ).A.x.x;
+        auto size = viewer->globalBasis->getAxesLength( viewport.id );
         UI::drag<LengthUnit>( "Global Basis Scale", size, viewportParameters.objectScale * 0.01f, 1e-9f );
-        viewer->globalBasisAxes->setXf( AffineXf3f::linear( Matrix3f::scale( size ) ), viewport.id );
+        viewer->globalBasis->setAxesProps( size, viewer->globalBasis->getAxesWidth( viewport.id ), viewport.id );
     }
     ImGui::PopStyleVar();
-    ImGui::SameLine();
+    ImGui::SameLine( 310 * menuScaling );
     ImGui::SetCursorPosY( ImGui::GetCursorPosY() + ( cButtonPadding - cCheckboxPadding ) * menuScaling );
     if ( UI::checkbox( "Auto", &isAutoGlobalBasisSize ) )
     {
@@ -608,15 +632,25 @@ void ViewerSettingsPlugin::drawMeasurementUnitsTab_( float menuScaling )
             return ret;
         }();
 
-        int option = int( UnitSettings::getUiLengthUnit().value_or( LengthUnit::_count ) );
+        int targetOption = int( UnitSettings::getUiLengthUnit().value_or( LengthUnit::_count ) );
         const auto& style = ImGui::GetStyle();
         ImGui::PushStyleVar( ImGuiStyleVar_FramePadding, { style.FramePadding.x, cButtonPadding * menuScaling } );
-        if ( UI::combo( "Unit##length", &option, optionNames ) )
+        if ( UI::combo( "UI Unit##length", &targetOption, optionNames ) )
         {
-            if ( option == int( LengthUnit::_count ) )
+            if ( targetOption == int( LengthUnit::_count ) )
                 UnitSettings::setUiLengthUnit( {}, true );
             else
-                UnitSettings::setUiLengthUnit( LengthUnit( option ), true );
+                UnitSettings::setUiLengthUnit( LengthUnit( targetOption ), true );
+            UnitSettings::setModelLengthUnit( {} );
+        }
+
+        int sourceOption = int( UnitSettings::getModelLengthUnit().value_or( LengthUnit::_count ) );
+        if ( UI::combo( "Model Unit##length", &sourceOption, optionNames ) )
+        {
+            if ( sourceOption == int( LengthUnit::_count ) )
+                UnitSettings::setModelLengthUnit( {} );
+            else
+                UnitSettings::setModelLengthUnit( LengthUnit( sourceOption ) );
         }
 
         // --- Precision
@@ -1284,6 +1318,7 @@ void ViewerSettingsPlugin::updateDialog_()
     orderedTab_ = TabType::Count;
     updateThemes();
 
+    tempUserScaling_ = viewer->getMenuPlugin()->getUserScaling();
     spaceMouseParams_ = viewer->getSpaceMouseParameters();
     touchpadParameters_ = viewer->getTouchpadParameters();
 #if defined(_WIN32) || defined(__APPLE__)

@@ -11,24 +11,32 @@ on:
   # This is the manual run from the UI.
   workflow_dispatch:
     inputs:
-      docker_image_tag:
+      vcpkg_docker_image_tag:
         # Empty string means the same thing as "latest", but we use an empty string here to ensure this works,
         #   because `types: [published]` can't have any inputs, so there we are forced to use an empty string, so it needs to work.
         default: ""
         required: false
         type: string
+      publish:
+        default: false
+        required: false
+        type: boolean
   # This is the `uses:` call from other `.yml` files.
   workflow_call:
     inputs:
-      docker_image_tag:
+      vcpkg_docker_image_tag:
         required: true
         type: string
+      publish:
+        default: false
+        required: false
+        type: boolean
 
 env:
-  VCPKG-VERSION: '2024.10.21'
-  CUDA-VERSION: '11.4.2.47141'
-  CUDA-MAJOR: '11'
-  CUDA-MINOR: '4'
+  VCPKG-VERSION: '2025.04.09'
+  CUDA-VERSION: '12.0.1.52833'
+  CUDA-MAJOR: '12'
+  CUDA-MINOR: '0'
 
 
 jobs:
@@ -39,12 +47,12 @@ jobs:
       version_tag: ${{ steps.get-latest-tag.outputs.tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
         # Disabling this with an `if:` results in `steps.get-latest-tag.outputs.tag` being empty.
         # Passing that to `ref:` makes it default to the current commit, which is exactly what we need.
       - uses: actions-ecosystem/action-get-latest-tag@v1
-        if: ${{ github.event_name == 'release' }}
+        if: ${{ github.event_name == 'release' || inputs.publish }}
         id: get-latest-tag
 
   manylinux-pip-build:
@@ -52,7 +60,7 @@ jobs:
     timeout-minutes: 80
     runs-on: ${{ matrix.runner }}
     container:
-      image: meshlib/meshlib-${{matrix.os}}:${{inputs.docker_image_tag || 'latest'}}
+      image: meshlib/meshlib-${{matrix.os}}:${{inputs.vcpkg_docker_image_tag || 'latest'}}
       options: ${{ matrix.container-options }}
     strategy:
       fail-fast: false
@@ -60,17 +68,15 @@ jobs:
         platform: ["x86_64", "aarch64"]
         include:
           - platform: "x86_64"
-            os: "ubuntu20"
+            os: rockylinux8-vcpkg-x64
             container-options: "--user root"
             runner: ubuntu-latest
-            compiler: /usr/bin/clang++-11
+            compiler: /usr/bin/clang++
           - platform: "aarch64"
-            os: "ubuntu20-arm64"
+            os: rockylinux8-vcpkg-arm64
             container-options: " " # empty
             runner: [ self-hosted, linux-arm64, on-demand, meshinspector ]
-            # When using Clang 11 on Ubuntu Arm 20.04, we get some obscure ABI issues that fail some tests,
-            # see the comments in `test_regression/test_algorithms/test_decimate.py` for more details.
-            compiler: /usr/bin/clang++-18
+            compiler: /usr/bin/clang++
 
     steps:
       - name: Work-around possible permission issues
@@ -84,7 +90,7 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{needs.setup.outputs.version_tag}}
 
@@ -100,20 +106,12 @@ jobs:
           git config --global --add safe.directory ${GITHUB_WORKSPACE}/thirdparty/parallel-hashmap
           git config --global --add safe.directory ${GITHUB_WORKSPACE}/thirdparty/mrbind-pybind11
           git config --global --add safe.directory ${GITHUB_WORKSPACE}/thirdparty/mrbind
-          git submodule update --init --depth 1 thirdparty/imgui thirdparty/parallel-hashmap thirdparty/mrbind-pybind11 thirdparty/mrbind
+          git submodule update --init --recursive --depth 1 thirdparty/imgui thirdparty/parallel-hashmap thirdparty/mrbind-pybind11 thirdparty/mrbind
 
-      - name: Python setup
-        env:
-          ALLOW_DELETING_EXISTING_PYTHON: 1
-        run: |
-          scripts/mrbind-pybind11/install_all_python_versions_ubuntu_reqs.sh
-
-      - name: Install thirdparty libs
+      - name: Install mrbind
         # Also print the amount of RAM. If there's not enough RAM, building MRBind bindings can fail. Not doing it in that step, because OOM fails can erase logs from the current step.
         run: |
-          ln -s /usr/local/lib/meshlib-thirdparty-lib/lib ./lib
-          ln -s /usr/local/lib/meshlib-thirdparty-lib/include ./include
-          ./scripts/mrbind/install_mrbind_ubuntu.sh
+          ./scripts/mrbind/install_mrbind_rockylinux.sh
           free -h
 
       - name: Build
@@ -121,20 +119,39 @@ jobs:
         env:
           MESHLIB_BUILD_RELEASE: "ON"
           MESHLIB_BUILD_DEBUG: "OFF"
-          # When using Clang 11 on Ubuntu Arm 20.04, we get some obscure ABI issues that fail some tests,
-          # see the comments in `test_regression/test_algorithms/test_decimate.py` for more details.
-          CMAKE_CXX_COMPILER: ${{matrix.compiler}}
-          # FIXME: OpenGL libraries are included to wheel packages when the XDE module is used
-          # Enabling `-allow-unsupported-compiler` because we use Clang 18 on Arm, while Cuda supports at most 16.
+          CMAKE_CXX_COMPILER: ${{ matrix.compiler }}
           MR_CMAKE_OPTIONS: >
-            -DMRIOEXTRAS_OPENCASCADE_USE_XDE=OFF
             -DMRVIEWER_NO_GTK=ON
-            -DMESHLIB_BUILD_MRCUDA=ON
-            ${{ fromJSON('["", "-DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler"]')[matrix.platform == 'aarch64'] }}
+            -DMR_PCH_USE_EXTRA_HEADERS=ON
+            -DCMAKE_CUDA_HOST_COMPILER=/opt/rh/gcc-toolset-11/root/usr/bin/g++
 
       - name: Generate and build MRBind bindings
         run: |
-          make -f scripts/mrbind/generate.mk -B --trace FOR_WHEEL=1 CXX_FOR_ABI=${{matrix.compiler}}
+          make -f scripts/mrbind/generate.mk -B --trace \
+            FOR_WHEEL=1 \
+            CXX_FOR_ABI=${{ matrix.compiler }} \
+            CXX_FOR_BINDINGS=${{ matrix.compiler }} \
+            DEPS_BASE_DIR=${VCPKG_ROOT}/installed/${VCPKG_TRIPLET}
+
+      # install helper utility for Python version management
+      - name: Install uv
+        uses: astral-sh/setup-uv@4959332f0f014c5280e7eac8b70c90cb574c9f9b # v6
+
+      - name: Build Python shim libs
+        run: |
+          PYTHON_VERSIONS=$(cat scripts/mrbind-pybind11/python_versions.txt | xargs)
+          GET_SYSCONFIG_VAR=${PWD}/scripts/wheel/get_sysconfig_var.py
+          
+          for PYTHON_VER in ${PYTHON_VERSIONS} ; do
+            export PKG_CONFIG_PATH=$(uv run --python ${PYTHON_VER} ${GET_SYSCONFIG_VAR} LIBPC)
+          
+            make shims -f scripts/mrbind/generate.mk -B --trace \
+              FOR_WHEEL=1 \
+              CXX_FOR_ABI=${{ matrix.compiler }} \
+              CXX_FOR_BINDINGS=${{ matrix.compiler }} \
+              DEPS_BASE_DIR=${VCPKG_ROOT}/installed/${VCPKG_TRIPLET} \
+              PYTHON_VERSIONS=${PYTHON_VER}
+          done
 
       - name: Run Tests
         run: MR_LOCAL_RESOURCES=1 xvfb-run -a ./build/Release/bin/MeshViewer -hidden -noEventLoop -unloadPluginsAtEnd
@@ -143,22 +160,50 @@ jobs:
         run: build/Release/bin/MRTest
 
       - name: Python Tests
-        working-directory: ./build/Release/bin
-        run: python3 ./../../../scripts/run_python_test_script.py -multi-cmd
+        run: |
+          PYTHON_VERSIONS=$(cat scripts/mrbind-pybind11/python_versions.txt | xargs)
+          REQUIREMENTS_FILE=${PWD}/requirements/python.txt
+          GET_SYSCONFIG_VAR=${PWD}/scripts/wheel/get_sysconfig_var.py
+          
+          cd build/Release/bin
+          for PYTHON_VER in ${PYTHON_VERSIONS} ; do
+            PYTHON_LIB_DIR=$(uv run --python ${PYTHON_VER} ${GET_SYSCONFIG_VAR} LIBDIR)
+          
+            LD_LIBRARY_PATH=${PYTHON_LIB_DIR} \
+            uv run \
+              --python ${PYTHON_VER} \
+              --with-requirements ${REQUIREMENTS_FILE} \
+              --with pytest \
+              python3 ./../../../scripts/run_python_test_script.py -d '../test_python'
+          done
 
       - name: Create and fix Wheel
-        shell: bash
         run: |
           python3.12 -m venv ./wheel_venv
           source ./wheel_venv/bin/activate
+          python3.12 -m pip install patchelf
           python3.12 ./scripts/wheel/build_wheel.py --version ${{needs.setup.outputs.version_tag || '0'}}
 
       - name: Upload Python Stubs
-        if: ${{ github.event_name == 'release' && matrix.platform == 'aarch64' }}
+        if: ${{ (github.event_name == 'release' || inputs.publish) && matrix.platform == 'aarch64' }}
         uses: actions/upload-artifact@v4
         with:
           name: PythonStubs
           path: ./scripts/wheel/meshlib/meshlib/*.pyi
+          retention-days: 1
+
+      - name: Generate C bindings
+        if: ${{ (github.event_name == 'release' || inputs.publish) && matrix.platform == 'aarch64' }}
+        env:
+          CXX: /usr/bin/clang++
+        run: make -f scripts/mrbind/generate.mk TARGET=c -B --trace
+
+      - name: Upload C bindings headers
+        if: ${{ (github.event_name == 'release' || inputs.publish) && matrix.platform == 'aarch64' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: CBindings
+          path: ./source/MeshLibC2/include
           retention-days: 1
 
       - name: Upload to Test Artifacts
@@ -171,7 +216,7 @@ jobs:
   update-documentation:
     # always() need to ignore general fail previous job, because this job depends on one matrix variant (aarch64 && py-version == 3.10),
     # and if this variant failed this job also will fail
-    if: ${{ ( github.event_name == 'release' ) && always() }}
+    if: ${{ ( github.event_name == 'release' || inputs.publish ) && always() }}
     needs:
       - manylinux-pip-build
     uses: ./.github/workflows/update-docs.yml
@@ -182,7 +227,7 @@ jobs:
   windows-pip-build:
     needs: setup
     timeout-minutes: 90
-    runs-on: windows-2019
+    runs-on:  [windows-2022]
     strategy:
       fail-fast: false
     permissions:
@@ -190,16 +235,23 @@ jobs:
       contents: read  # This is required for actions/checkout
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
-          submodules: true
+          submodules: recursive
           ref: ${{needs.setup.outputs.version_tag}}
+
+      - name: Clean Vcpkg Directory
+        working-directory: C:\vcpkg
+        run: git clean -ffdx
 
       - name: Checkout Vcpkg ${{env.VCPKG-VERSION}}
         working-directory: C:\vcpkg
         run: |
           git fetch
+          git pull --rebase
           git checkout ${{env.VCPKG-VERSION}}
+          bootstrap-vcpkg.bat
+          vcpkg.exe integrate install
 
       - name: Restore Vcpkg Cache
         uses: actions/cache@v4
@@ -238,18 +290,17 @@ jobs:
         run: choco install cuda --version=${{env.CUDA-VERSION}} --confirm
 
       - name: Setup CUDA
-        shell: bash
         run: |
-          echo "CUDA_PATH=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v${{ env.CUDA-MAJOR }}.${{ env.CUDA-MINOR }}" >> $GITHUB_ENV
-          echo "CUDA_PATH_V${{ env.CUDA-MAJOR }}_${{ env.CUDA-MINOR }}=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v${{ env.CUDA-MAJOR }}.${{ env.CUDA-MINOR }}" >> $GITHUB_ENV
-          echo "CUDA_PATH_VX_Y=CUDA_PATH_V${{ env.CUDA-MAJOR }}_${{ env.CUDA-MINOR }}" >> $GITHUB_ENV
-          echo "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v${{ env.CUDA-MAJOR }}.${{ env.CUDA-MINOR }}\\bin" >> $GITHUB_PATH
+          "CUDA_PATH=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v${{ env.CUDA-MAJOR }}.${{ env.CUDA-MINOR }}" >> $env:GITHUB_ENV
+          "CUDA_PATH_V${{ env.CUDA-MAJOR }}_${{ env.CUDA-MINOR }}=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v${{ env.CUDA-MAJOR }}.${{ env.CUDA-MINOR }}" >> $env:GITHUB_ENV
+          "CUDA_PATH_VX_Y=CUDA_PATH_V${{ env.CUDA-MAJOR }}_${{ env.CUDA-MINOR }}" >> $env:GITHUB_ENV
+          "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v${{ env.CUDA-MAJOR }}.${{ env.CUDA-MINOR }}\\bin" >> $env:GITHUB_PATH
 
       - name: Install Visual Studio Integration
         run: |
           $x = (dir $env:CUDA_PATH -dir -recurse -depth 2).where({$_.name -eq 'visual_studio_integration'}).fullname
           $y = (dir $x -dir -recurse).where({$_.name -eq 'MSBuildExtensions'}).fullname + '\*'
-          (gi 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Microsoft\VC\*\BuildCustomizations').fullname.foreach({cp $y $_})
+          (gi 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\*\BuildCustomizations').fullname.foreach({cp $y $_})
 
       - name: Add msbuild to PATH
         uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
@@ -284,7 +335,7 @@ jobs:
         env:
           MSYS2_DIR: C:\msys64_meshlib_mrbind\msys64
         run: |
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\Tools\VsDevCmd.bat" -arch=amd64
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat" -arch=amd64
           call ./scripts/mrbind/generate_win.bat -B --trace FOR_WHEEL=1
 
       - name: Run Test
@@ -328,13 +379,13 @@ jobs:
             brewpath: /usr/local
           - platform: "arm64"
             plat-name: macosx_12_0_arm64
-            instance: macos-arm-build
+            instance: [ self-hosted, macos-12, arm64, build ]
             brewpath: /opt/homebrew
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
-          submodules: true
+          submodules: recursive
           ref: ${{needs.setup.outputs.version_tag}}
 
       - name: Python setup
@@ -407,7 +458,7 @@ jobs:
       fail-fast: false
       matrix:
         platform: ["x86_64", "aarch64"]
-        os: ["ubuntu:20.04", "ubuntu:22.04", "debian:11-slim", "fedora:37", "fedora:39"]
+        py-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
           - platform: "x86_64"
             runner: ubuntu-latest
@@ -417,54 +468,57 @@ jobs:
             runner: [ self-hosted, linux-arm64, on-demand, meshinspector ]
             container-options: " " # empty
             container-prefix: "arm64v8/"
-          - os: "ubuntu:20.04"
-            py-version: "3.8"
-            py-cmd: "python3.8"
-          - os: "debian:11-slim"
-            py-version: "3.9"
-            py-cmd: "python3.9"
-          - os: "ubuntu:22.04"
-            py-version: "3.10"
-            py-cmd: "python3.10"
-          - os: "fedora:37"
-            py-version: "3.11"
-            py-cmd: "python3.11"
-          - os: "fedora:39"
-            py-version: "3.12"
-            py-cmd: "python3.12"
+          - py-version: "3.8"
+            os: "rockylinux:8"
+          - py-version: "3.9"
+            os: "debian:11-slim"
+          - py-version: "3.10"
+            os: "ubuntu:22.04"
+          - py-version: "3.11"
+            os: "fedora:37"
+          - py-version: "3.12"
+            os: "fedora:39"
+          - py-version: "3.13"
+            os: "fedora:42"
+    env:
+      PYTHON_CMD: python${{ matrix.py-version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{needs.setup.outputs.version_tag}}
 
-      - name: Ubuntu system setup
-        if: ${{ matrix.os == 'ubuntu:20.04' || matrix.os == 'ubuntu:22.04' || matrix.os == 'debian:11-slim' }}
-        run: apt -y update && apt -y upgrade && apt -y install curl libssl-dev python3-pip
+      - name: Rocky Linux system setup
+        if: ${{ matrix.os == 'rockylinux:8' }}
+        run: dnf -y install python38-pip
 
-      - name: Fedora 37 system setup
-        if: ${{matrix.os == 'fedora:37' || matrix.os == 'fedora:39'}}
-        run: dnf -y install python3 pip
+      - name: Debian/Ubuntu system setup
+        if: ${{ matrix.os == 'debian:11-slim' || matrix.os == 'ubuntu:22.04' }}
+        run: apt -y update && apt -y install curl libssl-dev python3-pip
+
+      - name: Fedora system setup
+        if: ${{ matrix.os == 'fedora:37' || matrix.os == 'fedora:39' || matrix.os == 'fedora:42' }}
+        run: dnf -y install python3-pip
 
       - name: Pip setup
         run: |
-          ${{ matrix.py-cmd }} -m pip install --upgrade pip
-          ${{ matrix.py-cmd }} -m pip uninstall -y meshlib
-          ${{ matrix.py-cmd }} -m pip install --upgrade -r ./requirements/python.txt
-          ${{ matrix.py-cmd }} -m pip install pytest
+          ${{ env.PYTHON_CMD }} -m pip install --upgrade pip
+          ${{ env.PYTHON_CMD }} -m pip uninstall -y meshlib
+          ${{ env.PYTHON_CMD }} -m pip install --upgrade -r ./requirements/python.txt
+          ${{ env.PYTHON_CMD }} -m pip install pytest
 
       - name: Download Meshlib wheel from Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: ManyLinux-${{matrix.platform}}
           merge-multiple: true
 
       - name: Meshlib wheel install
-        run: ${{ matrix.py-cmd }} -m pip install ${{ matrix.pip-options }} ./meshlib-*.whl
+        run: ${{ env.PYTHON_CMD }} -m pip install ${{ matrix.pip-options }} ./meshlib-*.whl
 
       - name: Run Python tests
         working-directory: test_python
-        run: ${{ matrix.py-cmd }} -m pytest -s -v
+        run: ${{ env.PYTHON_CMD }} -m pytest -s -v
 
   windows-pip-test:
     needs: [windows-pip-build]
@@ -476,12 +530,12 @@ jobs:
         py-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{needs.setup.outputs.version_tag}}
 
       - name: Download Meshlib wheel from Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: Windows
           merge-multiple: true
@@ -525,7 +579,7 @@ jobs:
             instance: macos-13
           - platform: "arm64"
             plat-name: macosx_12_0_arm64
-            instance: macos-arm-build
+            instance: [ self-hosted, macos-12, arm64, build ]
           - py-version: "3.8"
             py-cmd: "python3.8"
           - py-version: "3.9"
@@ -540,7 +594,7 @@ jobs:
             py-cmd: "python3.13"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{needs.setup.outputs.version_tag}}
 
@@ -566,7 +620,7 @@ jobs:
           ${{ matrix.py-cmd }} -m pip install pytest
 
       - name: Download Meshlib wheel from Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: Macos-${{matrix.platform}}
           merge-multiple: true
@@ -579,25 +633,25 @@ jobs:
         run: ${{ matrix.py-cmd }} -m pytest -s -v
 
   upload-to-release:
-    if: ${{ github.event_name == 'release' }}
+    if: ${{ github.event_name == 'release' || inputs.publish }}
     needs: [manylinux-pip-test, windows-pip-test, macos-pip-test]
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - name: Download Wheels Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: ManyLinux-*
           merge-multiple: true
 
       - name: Download Wheels Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: Windows
           merge-multiple: true
 
       - name: Download Wheels Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: Macos-*
           merge-multiple: true
@@ -609,7 +663,7 @@ jobs:
         run: twine upload ./meshlib-*.whl -u __token__ -p ${{ secrets.PYPI_MESHINSPECTOR_TOKEN }} --skip-existing
 
   post-release-test:
-    if: ${{ github.event_name == 'release' }}
+    if: ${{ github.event_name == 'release' || inputs.publish }}
     needs: upload-to-release
     uses: MeshInspector/MeshLib/.github/workflows/release-tests.yml@master
 
@@ -626,11 +680,19 @@ jobs:
           failOnError: false
 
       - name: Delete Python Stubs
-        if: ${{ github.event_name == 'release' }}
+        if: ${{ github.event_name == 'release' || inputs.publish }}
         uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5
         with:
           name: PythonStubs
           failOnError: false
+
+      - name: Delete C bindings headers
+        if: ${{ github.event_name == 'release' || inputs.publish }}
+        uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5
+        with:
+          name: CBindings
+          failOnError: false
+
 
       - name: Delete all Windows
         uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5

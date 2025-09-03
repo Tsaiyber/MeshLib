@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MRMacros.h"
 #include "MRMeshFwd.h"
 #include "MRAffineXf3.h"
 #include "MRVectorTraits.h"
@@ -41,11 +42,17 @@ public:
     Box( const V& min, const V& max ) : min{ min }, max{ max } { }
 
     /// skip initialization of min/max
+    #if MR_HAS_REQUIRES
+    // If the compiler supports `requires`, use that instead of `std::enable_if` here.
+    // Not (only) because it looks cooler, but because of a bug in our binding generator that makes it choke on it: https://github.com/MeshInspector/mrbind/issues/19
+    explicit Box( NoInit ) requires (VectorTraits<V>::supportNoInit) : min{ noInit }, max{ noInit } { }
+    explicit Box( NoInit ) requires (!VectorTraits<V>::supportNoInit) { }
+    #else
     template <typename VV = V, typename std::enable_if_t<VectorTraits<VV>::supportNoInit, int> = 0>
     explicit Box( NoInit ) : min{ noInit }, max{ noInit } { }
-
     template <typename VV = V, typename std::enable_if_t<!VectorTraits<VV>::supportNoInit, int> = 0>
     explicit Box( NoInit ) { }
+    #endif
 
     template <typename U>
     explicit Box( const Box<U> & a ) : min{ a.min }, max{ a.max } { }
@@ -65,8 +72,8 @@ public:
     V center() const { assert( valid() ); return ( min + max ) / T(2); }
 
     /// returns the corner of this box as specified by given bool-vector:
-    /// 1 element in (c) means take min's coordinate,
-    /// 0 element in (c) means take max's coordinate
+    /// 0 element in (c) means take min's coordinate,
+    /// 1 element in (c) means take max's coordinate
     V corner( const Vb& c ) const
     {
         V res;
@@ -209,6 +216,36 @@ public:
         return res;
     }
 
+    /// returns the closest point on the box to the given point
+    /// for points outside the box this is equivalent to getBoxClosestPointTo
+    V getProjection( const V & pt ) const
+    {
+        assert( valid() );
+        if ( !contains( pt ) )
+            return getBoxClosestPointTo( pt );
+
+        T minDist = std::numeric_limits<T>::max();
+        int minDistDim {};
+        T minDistPos {};
+
+        for ( auto dim = 0; dim < elements; ++dim )
+        {
+            for ( const auto& border : { min, max } )
+            {
+                if ( auto dist = std::abs( VTraits::getElem( dim, border ) - VTraits::getElem( dim, pt ) ); dist < minDist )
+                {
+                    minDist = dist;
+                    minDistDim = dim;
+                    minDistPos = VTraits::getElem( dim, border );
+                }
+            }
+        }
+
+        auto proj = pt;
+        VTraits::getElem( minDistDim, proj ) = minDistPos;
+        return proj;
+    }
+
     /// decreases min and increased max on given value
     Box expanded( const V & expansion ) const
     {
@@ -320,6 +357,31 @@ inline auto depth( const Box<V>& box )
     return box.max.z - box.min.z;
 }
 
+/// returns a vector with unique integer values, each representing a dimension of the box;
+/// the dimensions are sorted according to the sizes of the box along each dimension:
+/// the dimension with the smallest size is first, largest size - last.
+/// E.g. findSortedBoxDims( Box3f( {0, 0, 0}, {2, 1, 3} ) ) == Vector3i(1, 0, 2)
+template <typename V>
+inline auto findSortedBoxDims( const Box<V>& box ) -> typename VectorTraits<V>::template ChangeBaseType<int>
+{
+    constexpr auto es = Box<V>::elements;
+    auto boxDiag = box.max - box.min;
+    std::pair<float, int> ps[es];
+    for ( int i = 0; i < es; ++i )
+        ps[i] = { boxDiag[i], i };
+
+    // bubble sort (optimal for small array)
+    for ( int i = 0; i + 1 < es; ++i )
+        for ( int j = i + 1; j < es; ++j )
+            if ( ps[j] < ps[i] )
+                std::swap( ps[i], ps[j] );
+
+    typename VectorTraits<V>::template ChangeBaseType<int> res( noInit );
+    for ( int i = 0; i < es; ++i )
+        res[i] = ps[i].second;
+    return res;
+}
+
 /// get<0> returns min, get<1> returns max
 template<size_t I, typename V>
 constexpr const V& get( const Box<V>& box ) noexcept { return box[int( I )]; }
@@ -336,7 +398,7 @@ namespace std
 template<size_t I, typename V>
 struct tuple_element<I, MR::Box<V>> { using type = V; };
 
-template <typename V> 
+template <typename V>
 struct tuple_size<MR::Box<V>> : integral_constant<size_t, 2> {};
 
 } //namespace std

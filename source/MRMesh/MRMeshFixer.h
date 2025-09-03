@@ -115,9 +115,6 @@ struct FixCreasesParams
 {
     /// edges with dihedral angle sharper this will be considered as creases
     float creaseAngle = PI_F * 175.0f / 180.0f;
-    
-    /// area around creases will be considered as planar if edge angle does not exceed this cos value
-    float planarCritCos = 0.8f;
 
     /// planar check is skipped for faces with worse aspect ratio
     float criticalTriAspectRatio = 1e3f;
@@ -141,7 +138,7 @@ struct FindDisorientationParams
     } mode{ RayMode::Shallowest };
 
     /// if set - copy mesh, and fills holes for better quality in case of ray going out through hole
-    bool virtualFillHoles{ true };
+    bool virtualFillHoles{ false };
 
     ProgressCallback cb;
 };

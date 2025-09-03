@@ -551,32 +551,23 @@ float GetTitleBarHeght( float menuScaling )
     return 2 * MR::cRibbonItemInterval * menuScaling + ImGui::GetTextLineHeight() + 2 * ImGui::GetStyle().WindowBorderSize * menuScaling;
 }
 
-bool BeginCustomStatePlugin( const char* label, bool* open, const CustomStatePluginWindowParameters& params )
+std::pair<ImVec2, bool> LoadSavedWindowPos( const char* label, ImGuiWindow* window, float width, const ImVec2* position /*= nullptr*/ )
 {
-    const auto& style = ImGui::GetStyle();
-
-    const float borderSize = style.WindowBorderSize * params.menuScaling;
-    const float titleBarHeight = GetTitleBarHeght( params.menuScaling );
-    auto height = params.height;
-    if ( params.collapsed && *params.collapsed )
-        height = titleBarHeight;
-
-    ImGui::PushStyleVar( ImGuiStyleVar_ItemSpacing, ImVec2( 12 * params.menuScaling, 8 * params.menuScaling ) );
-
-    ImGuiWindow* window = FindWindowByName( label );
-    auto menu = ImGuiMenu::instance();
-    ImVec2 initialWindowPos;
     bool haveSavedWindowPos = false;
+    ImVec2 initialWindowPos;
+
+    auto menu = ImGuiMenu::instance();
     bool windowIsInactive = window && !window->WasActive;
+
     if ( !window || windowIsInactive )
     {
-        auto ribMenu = std::dynamic_pointer_cast<MR::RibbonMenu>( menu );
-        float xPos = GetIO().DisplaySize.x - params.width;
+        auto ribMenu = std::dynamic_pointer_cast< MR::RibbonMenu >( menu );
+        float xPos = GetIO().DisplaySize.x - width;
         float yPos = 0.0f;
-        if ( params.position )
+        if ( position )
         {
-            xPos = params.position->x;
-            yPos = params.position->y;
+            xPos = position->x;
+            yPos = position->y;
         }
         else if ( ribMenu )
             yPos = ( ribMenu->getTopPanelOpenedHeight() - 1.0f ) * menu->menu_scaling();
@@ -600,7 +591,46 @@ bool BeginCustomStatePlugin( const char* label, bool* open, const CustomStatePlu
             initialWindowPos = ImVec2( xPos, yPos );
         }
     }
+    return { initialWindowPos, haveSavedWindowPos };
+}
 
+void SaveWindowPosition( const char* label, ImGuiWindow* window )
+{
+    if ( window )
+    {
+        auto& config = Config::instance();
+        auto dpJson = config.getJsonValue( "DialogPositions" );
+        serializeToJson( Vector2i{ int( window->Pos.x ), int( window->Pos.y ) }, dpJson[label] );
+        config.setJsonValue( "DialogPositions", dpJson );
+    }
+}
+
+bool BeginSavedWindowPos( const std::string& name, bool* open, const SavedWindowPosParams& params )
+{
+    ImGuiWindow* window = ImGui::FindWindowByName( name.c_str() );
+    auto [initialWindowPos, haveSavedWindowPos] = LoadSavedWindowPos( name.c_str(), window, params.size.y, params.pos );
+    UI::getDefaultWindowRectAllocator().setFreeNextWindowPos( name.c_str(), initialWindowPos, haveSavedWindowPos ? ImGuiCond_FirstUseEver : ImGuiCond_Appearing, ImVec2( 0, 0 ) );
+    ImGui::SetNextWindowSize( params.size, ImGuiCond_Appearing );
+    const bool res = Begin( name.c_str(), open, params.flags );
+    SaveWindowPosition( name.c_str(), window);
+    return res;
+}
+
+bool BeginCustomStatePlugin( const char* label, bool* open, const CustomStatePluginWindowParameters& params )
+{
+    const auto& style = ImGui::GetStyle();
+
+    const float borderSize = style.WindowBorderSize * params.menuScaling;
+    const float titleBarHeight = GetTitleBarHeght( params.menuScaling );
+    auto height = params.height;
+    if ( params.collapsed && *params.collapsed )
+        height = titleBarHeight;
+
+    ImGui::PushStyleVar( ImGuiStyleVar_ItemSpacing, ImVec2( 12 * params.menuScaling, 8 * params.menuScaling ) );
+
+    ImGuiWindow* window = FindWindowByName( label );
+    auto menu = ImGuiMenu::instance();
+    auto [initialWindowPos, haveSavedWindowPos] = LoadSavedWindowPos( label, params.width, params.position );
     UI::getDefaultWindowRectAllocator().setFreeNextWindowPos( label, initialWindowPos, haveSavedWindowPos ? ImGuiCond_FirstUseEver : ImGuiCond_Appearing, haveSavedWindowPos ? ImVec2( 0, 0 ) : params.pivot );
 
     if ( params.changedSize )
@@ -725,7 +755,7 @@ bool BeginCustomStatePlugin( const char* label, bool* open, const CustomStatePlu
     const ImRect boundingBox( { window->Rect().Min.x + borderSize, window->Rect().Min.y + borderSize }, { window->Rect().Max.x - borderSize, window->Rect().Min.y + titleBarHeight - borderSize } );
 
     window->DrawList->PushClipRect( window->Rect().Min, window->Rect().Max );
-    window->DrawList->AddRectFilled( boundingBox.Min, boundingBox.Max, bgColor );
+    window->DrawList->AddRectFilled( boundingBox.Min, boundingBox.Max, bgColor,style.WindowRounding, ImDrawFlags_RoundCornersTop );
 
     if ( params.collapsed )
     {
@@ -758,12 +788,26 @@ bool BeginCustomStatePlugin( const char* label, bool* open, const CustomStatePlu
     else
         ImGui::SetCursorScreenPos( { cursorScreenPos.x, window->Rect().Min.y + 0.5f * ( titleBarHeight - ImGui::GetFontSize() ) } );
 
+    const ImVec2 labelStartPos = ImGui::GetCursorScreenPos();
+    const ImVec2 labelTextSize = ImGui::CalcTextSize( label, nullptr, true );
     ImGui::RenderText( ImGui::GetCursorScreenPos(), label );
 
     if ( titleFont )
         ImGui::PopFont();
 
     ImGui::SameLine();
+
+    if ( params.customHeaderFn )
+    {
+        const float labelOffsetX = labelTextSize.x + style.ItemInnerSpacing.x * params.menuScaling;
+        const float labelOffsetY = 0.5f * ( titleBarHeight - 2.f * borderSize - labelTextSize.y );
+
+        const ImVec2 customHeaderCursorPos{ labelStartPos.x + labelOffsetX, window->Rect().Min.y + labelOffsetY };
+        ImGui::SetCursorScreenPos( customHeaderCursorPos );
+
+        params.customHeaderFn();
+        ImGui::SameLine();
+    }
 
     if ( params.helpBtnFn )
     {
@@ -1208,7 +1252,16 @@ PaletteChanges Palette(
     UI::combo( "Palette Type", &paletteRangeMode, { "Even Space", "Central Zone" } );
     UI::setTooltipIfHovered( "If \"Central zone\" selected you can separately fit values which are higher or lower then central one. Otherwise only the whole scale can be fit", menuScaling );
     if ( oldPaletteRangeMode != paletteRangeMode )
+    {
         changes |= PaletteChanges::Ranges | PaletteChanges::Texture;
+
+        if ( palette.isDiscretizationPercentagesEnabled() )
+        {
+            // Re-enable discretization percentages to reset those stats, so we know to recompute them later.
+            palette.enableDiscretizationPercentages( false );
+            palette.enableDiscretizationPercentages( true );
+        }
+    }
     ImGui::PopItemWidth();
 
     ImGui::PushItemWidth( 0.5f * scaledWidth );
@@ -1418,7 +1471,17 @@ PaletteChanges Palette(
     if ( UI::button( "Reset Palette", Vector2f( widthButton, 0 ) ) )
     {
         presetName = std::string();
+
+        // Preserve some state.
+        int numHistBuckets = palette.getNumHistogramBuckets();
+        bool discrPercentagesWasEnabled = palette.isDiscretizationPercentagesEnabled();
+
         palette = MR::Palette( Palette::DefaultColors );
+
+        // Restore state.
+        palette.setNumHistogramBuckets( numHistBuckets );
+        palette.enableDiscretizationPercentages( discrPercentagesWasEnabled );
+
         changes |= ImGui::PaletteChanges::All;
     }
     UI::setTooltipIfHovered( "Returns the palette to its default values", menuScaling );

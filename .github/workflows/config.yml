@@ -43,7 +43,7 @@ on:
         value: ${{ jobs.prepare-config.outputs.tag-update-doc == 'true' || jobs.prepare-config.outputs.tag-update-doc-only == 'true' }}
       upload_artifacts:
         description:
-        value: ${{ github.event_name == 'push' || github.event_name == 'schedule' || jobs.prepare-config.outputs.tag-full-ci == 'true' }}
+        value: ${{ github.event_name == 'push' || github.event_name == 'schedule' || jobs.prepare-config.outputs.tag-full-ci == 'true' || jobs.prepare-config.outputs.tag-upload-binaries == 'true' }}
       upload_test_artifacts:
         description:
         value: ${{ jobs.prepare-config.outputs.tag-upload-test-artifacts == 'true' }}
@@ -93,6 +93,7 @@ jobs:
       tag-skip-image-rebuild:    ${{ contains( github.event.pull_request.labels.*.name, 'skip-image-rebuild' ) }}
       tag-update-doc:            ${{ contains( github.event.pull_request.labels.*.name, 'update-doc' ) }}
       tag-update-doc-only:       ${{ contains( github.event.pull_request.labels.*.name, 'update-doc-only' ) }}
+      tag-upload-binaries:       ${{ contains( github.event.pull_request.labels.*.name, 'upload-binaries' ) }}
       tag-upload-test-artifacts: ${{ contains( github.event.pull_request.labels.*.name, 'upload-test-artifacts' ) }}
       tag-test-pip-build:        ${{ contains( github.event.pull_request.labels.*.name, 'test-pip-build' ) }}
       # tags for disabling builds for different systems
@@ -108,14 +109,21 @@ jobs:
     env:
       # duplicate output values here since they cannot be accessed from steps
       full_config_build: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains( github.event.pull_request.labels.*.name, 'full-ci' ) }}
-      upload_artifacts: ${{ github.event_name == 'push' || github.event_name == 'schedule' || contains( github.event.pull_request.labels.*.name, 'full-ci' ) }}
-      version_namespace: ${{ contains( github.event.pull_request.labels.*.name, 'full-ci' ) && github.event_name != 'push' && 'pr-test' || '' }}
+      upload_artifacts: ${{ github.event_name == 'push' || github.event_name == 'schedule' || contains( github.event.pull_request.labels.*.name, 'full-ci' ) || contains( github.event.pull_request.labels.*.name, 'upload-binaries' ) }}
+      version_namespace: ${{ ( contains( github.event.pull_request.labels.*.name, 'full-ci' ) || contains( github.event.pull_request.labels.*.name, 'upload-binaries' ) ) && github.event_name != 'push' && 'pr-test' || '' }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: true
+
+      # install helper utility for Python version management
+      - name: Install uv
+        uses: astral-sh/setup-uv@4959332f0f014c5280e7eac8b70c90cb574c9f9b # v6
+
+      - name: Check for errors
+        run: uvx --python 3.12 pre-commit run --all-files --hook-stage manual
 
       - name: Filter Linux paths
         uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
@@ -123,11 +131,10 @@ jobs:
         with:
           filters: |
             src:
-              - 'docker/(ubuntu20|ubuntu22|ubuntu24|fedora39|emscripten)Dockerfile'
-              - 'requirements/(ubuntu|fedora|distribution_python).txt'
+              - 'docker/(ubuntu20|ubuntu22|ubuntu24|emscripten)Dockerfile'
+              - 'requirements/(ubuntu|distribution_python).txt'
               - 'scripts/build_thirdparty.sh'
               - 'scripts/install_apt_requirements.sh'
-              - 'scripts/install_dnf_requirements.sh'
               - 'scripts/mrbind/install_deps_ubuntu.sh'
               - 'thirdparty/!(install.bat|vcpkg/**)'
 
@@ -137,7 +144,7 @@ jobs:
         with:
           filters: |
             src:
-              - 'docker/vcpkgDockerfile'
+              - 'docker/(rockylinux8|rockylinux9)-vcpkgDockerfile'
               - 'requirements/vcpkg-linux.txt'
               - 'thirdparty/vcpkg/**'
 
@@ -178,7 +185,7 @@ jobs:
 
       - name: Checkout full history
         if: ${{ env.upload_artifacts == 'true' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 

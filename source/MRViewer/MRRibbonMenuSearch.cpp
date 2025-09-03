@@ -63,7 +63,7 @@ void RibbonMenuSearch::drawWindow_( const Parameters& params )
     if ( !isSmallUI_ && resultsList.empty() )
         return;
 
-    UI::TestEngine::pushTree( "RibbonMenuSearch" );
+    UI::TestEngine::pushTree( "RibbonSearchPopup" );
     MR_FINALLY{ UI::TestEngine::popTree(); };
 
     const float screenWidth = float( getViewerInstance().framebufferSize.x );
@@ -201,7 +201,11 @@ void RibbonMenuSearch::drawWindow_( const Parameters& params )
                 ImGui::SetCursorPosY( storePos.y );
             }
             ImGui::SetCursorPosX( tabBtnWidth + tabBtnPadding );
+            bool activated = false;
+            dbParams.isPressed = &activated;
             params.btnDrawer.drawButtonItem( *foundItem.item, dbParams );
+            if ( activated )
+                pushRecentItem( foundItem.item->item );
             if ( foundItem.item->item->isActive() != pluginActive )
             {
                 onToolActivateSignal( foundItem.item->item );
@@ -241,6 +245,7 @@ void RibbonMenuSearch::deactivateSearch_()
 
 void RibbonMenuSearch::drawMenuUI( const Parameters& params )
 {
+    UI::TestEngine::pushTree( "RibbonSearch" );
     if ( isSmallUI_ )
     {
         if ( smallSearchButton_( params ) )
@@ -285,6 +290,8 @@ void RibbonMenuSearch::drawMenuUI( const Parameters& params )
     if ( active_ )
         drawWindow_( params );
 
+    UI::TestEngine::popTree();
+
     prevFrameActive_ = active_;
     isSmallUILast_ = isSmallUI_;
 }
@@ -325,7 +332,7 @@ bool RibbonMenuSearch::smallSearchButton_( const Parameters& params )
     float btnSize = params.scaling * cTopPanelAditionalButtonSize;
     if ( font )
         ImGui::PushFont( font );
-    bool pressed = ImGui::Button( "\xef\x80\x82", ImVec2( btnSize, btnSize ) ) ;
+    bool pressed = UI::buttonEx( "\xef\x80\x82", ImVec2( btnSize, btnSize ), { .forceImGuiBackground = true, .testEngineName = "ActivateSearchBtn" } );
     if ( font )
     {
         ImGui::PopFont();
@@ -348,7 +355,7 @@ bool RibbonMenuSearch::searchInputText_( const char* label, std::string& str, co
     const float inputHeight = ImGui::GetTextLineHeight() + style.FramePadding.y * 2.f;
     const auto drawList = ImGui::GetWindowDrawList();
     drawList->AddRectFilled( cursorPos, ImVec2( cursorPos.x + cSearchSize * params.scaling, cursorPos.y + inputHeight ),
-        ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::RibbonButtonHovered ).getUInt32(), style.FrameRounding );
+        ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::TopPanelSearchBackground ).getUInt32(), style.FrameRounding );
     drawList->AddRect( cursorPos, ImVec2( cursorPos.x + cSearchSize * params.scaling, cursorPos.y + inputHeight ),
         ImGui::GetColorU32( ImGuiCol_Border ), style.FrameRounding );
 
@@ -391,7 +398,7 @@ bool RibbonMenuSearch::searchInputText_( const char* label, std::string& str, co
 
 void RibbonMenuSearch::updateSearchResult_()
 {
-    searchResult_ = RibbonSchemaHolder::search( searchLine_, &captionCount_, &searchResultWeight_ );
+    searchResult_ = RibbonSchemaHolder::search( searchLine_, { &captionCount_, &searchResultWeight_, requirementsFunc_ } );
     hightlightedSearchItem_ = 0;
 }
 

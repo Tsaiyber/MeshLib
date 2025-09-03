@@ -77,17 +77,28 @@ struct BooleanParameters
 {
     /// Transform from mesh `B` space to mesh `A` space
     const AffineXf3f* rigidB2A = nullptr;
+    
     /// Optional output structure to map mesh `A` and mesh `B` topology to result mesh topology
     BooleanResultMapper* mapper = nullptr;
+    
     /// Optional precut output of meshA, if present - does not perform boolean and just return them
     BooleanPreCutResult* outPreCutA = nullptr;
+    
     /// Optional precut output of meshB, if present - does not perform boolean and just return them
     BooleanPreCutResult* outPreCutB = nullptr;
+    
     /// Optional output cut edges of booleaned meshes 
     std::vector<EdgeLoop>* outCutEdges = nullptr;
+    
     /// By default produce valid operation on disconnected components
     /// if set merge all non-intersecting components
     bool mergeAllNonIntersectingComponents = false;
+    
+    /// If this option is enabled boolean will try to cut meshes even if there are self-intersections in intersecting area
+    /// it might work in some cases, but in general it might prevent fast error report and lead to other errors along the way
+    /// \warning not recommended in most cases
+    bool forceCut = false;
+    
     ProgressCallback cb = {};
 };
 
@@ -96,6 +107,9 @@ MRMESH_API BooleanResult boolean( const Mesh& meshA, const Mesh& meshB, BooleanO
 MRMESH_API BooleanResult boolean( Mesh&& meshA, Mesh&& meshB, BooleanOperation operation,
                                   const BooleanParameters& params = {} );
 
+/// performs boolean operation on mesh with itself, cutting simple intersections contours and flipping their connectivity
+/// this function is experimental and likely to change signature and/or behavior in future 
+MRMESH_API Expected<Mesh> selfBoolean( const Mesh& mesh );
 
 /// returns intersection contours of given meshes
 MRMESH_API Contours3f findIntersectionContours( const Mesh& meshA, const Mesh& meshB, const AffineXf3f* rigidB2A = nullptr );
@@ -120,5 +134,12 @@ struct BooleanResultPoints
  */
  MRMESH_API Expected<BooleanResultPoints,std::string> getBooleanPoints( const Mesh& meshA, const Mesh& meshB, BooleanOperation operation,
                                                                const AffineXf3f* rigidB2A = nullptr );
+
+
+/// converts all vertices of the mesh first in integer-coordinates, and then back in float-coordinates;
+/// this is necessary to avoid small self-intersections near newly introduced vertices on cut-contours;
+/// this actually sligntly moves only small perentage of vertices near x=0 or y=0 or z=0 planes, where float-precision is higher than int-precision;
+/// newly introduced vertices on cut-contours are also converted, but we expected that they remain unchanged due to idempotent property of the conversion
+MRMESH_API void convertIntFloatAllVerts( Mesh & mesh, const CoordinateConverters& conv );
 
 } //namespace MR

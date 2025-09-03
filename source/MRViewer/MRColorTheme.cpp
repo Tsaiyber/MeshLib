@@ -25,7 +25,7 @@
 
 #ifdef __EMSCRIPTEN__
 
-extern "C" 
+extern "C"
 {
 // 0 - dark
 // 1 - light
@@ -155,17 +155,10 @@ void ColorTheme::serializeCurrentToFile( const std::filesystem::path& path )
 {
     Json::Value root;
     serializeCurrentToJson( root );
-
-    // although json is a textual format, we open the file in binary mode to get exactly the same result on Windows and Linux
-    std::ofstream ofs( path, std::ofstream::binary );
-    Json::StreamWriterBuilder builder;
-    std::unique_ptr<Json::StreamWriter> writer{ builder.newStreamWriter() };
-    if ( !ofs || writer->write( root, &ofs ) != 0 )
+    if ( !serializeJsonValue( root, path ) )
     {
         spdlog::error( "Color theme serialization failed: cannot write file {}", utf8string( path ) );
     }
-
-    ofs.close();
 }
 
 void ColorTheme::serializeCurrentToJson( Json::Value& root )
@@ -315,6 +308,7 @@ const char* ColorTheme::getRibbonColorTypeName( RibbonColorsType type )
         "HeaderBackground",
         "HeaderSeparator",
         "TopPanelBackground",
+        "TopPanelSearchBackground",
         "QuickAccessBackground",
         "Borders",
 
@@ -375,7 +369,9 @@ const char* ColorTheme::getRibbonColorTypeName( RibbonColorsType type )
         "GradBtnSecStyleActiveStart",
         "GradBtnSecStyleEnd",
         "GradBtnSecStyleHoverEnd",
-        "GradBtnSecStyleActiveEnd"
+        "GradBtnSecStyleActiveEnd",
+
+        "Grid",
     };
     return colorNames[int( type )];
 }
@@ -397,7 +393,10 @@ const char* ColorTheme::getViewportColorTypeName( ViewportColorsType type )
     constexpr std::array<const char*, size_t( ViewportColorsType::Count )> colorNames
     {
         "Background",
-        "Borders"
+        "Borders",
+        "AxisX",
+        "AxisY",
+        "AxisZ"
     };
     return colorNames[int( type )];
 }
@@ -465,10 +464,9 @@ void ColorTheme::resetImGuiStyle()
     style.ItemSpacing.y = 6.0f;
 
     style.FrameBorderSize = 1.0f;
-    style.AntiAliasedLines = false;
 
     style.WindowBorderSize = 1.0f;
-    
+
     if ( auto menu = getViewerInstance().getMenuPlugin() )
     {
         auto scaling = menu->menu_scaling();

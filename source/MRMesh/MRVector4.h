@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cmath>
+#include <type_traits>
 #include "MRPch/MRBindingMacros.h"
+#include "MRMesh/MRMacros.h"
 #include "MRVector3.h"
 
 namespace MR
@@ -32,7 +34,10 @@ struct Vector4
     {
         return Vector4( a, a, a, a );
     }
-    template <typename U>
+
+    // Here `T == U` doesn't seem to cause any issues in the C++ code, but we're still disabling it because it somehow gets emitted
+    //   when generating the bindings, and looks out of place there. Specifically for Vector4, it only gets emitted on Windows (but not on Linux) for some reason.
+    template <typename U> MR_REQUIRES_IF_SUPPORTED( !std::is_same_v<T, U> )
     constexpr explicit Vector4( const Vector4<U> & v ) noexcept : x( T( v.x ) ), y( T( v.y ) ), z( T( v.z ) ), w( T( v.w ) )
     {
     }
@@ -91,10 +96,10 @@ struct Vector4
             return b * ( 1 / a );
     }
 
-    friend constexpr Vector4<T> & operator +=( Vector4<T> & a, const Vector4<T> & b ) MR_REQUIRES_IF_SUPPORTED( requires{ a + b; } ) { a.x += b.x; a.y += b.y; a.z += b.z; a.w += b.w; return a; }
-    friend constexpr Vector4<T> & operator -=( Vector4<T> & a, const Vector4<T> & b ) MR_REQUIRES_IF_SUPPORTED( requires{ a - b; } ) { a.x -= b.x; a.y -= b.y; a.z -= b.z; a.w -= b.w; return a; }
-    friend constexpr Vector4<T> & operator *=( Vector4<T> & a,               T    b ) MR_REQUIRES_IF_SUPPORTED( requires{ a * b; } ) { a.x *= b; a.y *= b; a.z *= b; a.w *= b; return a; }
-    friend constexpr Vector4<T> & operator /=( Vector4<T> & a,               T    b ) MR_REQUIRES_IF_SUPPORTED( requires{ a / b; } )
+    friend constexpr Vector4<T> & operator +=( Vector4<T> & a, const Vector4<T> & b ) { a.x += b.x; a.y += b.y; a.z += b.z; a.w += b.w; return a; }
+    friend constexpr Vector4<T> & operator -=( Vector4<T> & a, const Vector4<T> & b ) { a.x -= b.x; a.y -= b.y; a.z -= b.z; a.w -= b.w; return a; }
+    friend constexpr Vector4<T> & operator *=( Vector4<T> & a,               T    b ) { a.x *= b; a.y *= b; a.z *= b; a.w *= b; return a; }
+    friend constexpr Vector4<T> & operator /=( Vector4<T> & a,               T    b )
     {
         if constexpr ( std::is_integral_v<T> )
             { a.x /= b; a.y /= b; a.z /= b; a.w /= b; return a; }

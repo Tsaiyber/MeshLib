@@ -34,3 +34,10 @@ source/MRDotNetTest/obj/*
 /lib64
 /include
 /out/build/
+.cache
+venv/*
+wheelhouse/*
+/source/MeshLibC2/include
+/source/MeshLibC2/src
+/source/MeshLibC2/temp
+compile_commands.json

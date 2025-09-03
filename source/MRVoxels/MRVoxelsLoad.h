@@ -34,24 +34,47 @@ MRVOXELS_API Expected<VdbVolume> fromRaw( const std::filesystem::path& file, con
 MRVOXELS_API Expected<VdbVolume> fromRaw( std::istream& in, const RawParameters& params,
                                                          const ProgressCallback& cb = {} );
 
+/// Load raw voxels from file with provided parameters
+MRVOXELS_API Expected<FloatGrid> gridFromRaw( const std::filesystem::path& file, const RawParameters& params,
+                                                         const ProgressCallback& cb = {} );
+
+/// Load raw voxels from stream with provided parameters;
+/// important on Windows: in stream must be open in binary mode
+MRVOXELS_API Expected<FloatGrid> gridFromRaw( std::istream& in, const RawParameters& params,
+                                                         const ProgressCallback& cb = {} );
+
 /// finds raw voxels file and its encoding parameters
 /// \param file on input: file name probably without suffix with parameters
 ///             on output: if success existing file name
 MRVOXELS_API Expected<RawParameters> findRawParameters( std::filesystem::path& file );
 
-/// Load raw voxels file, parsing parameters from name 
+/// Load raw voxels file, parsing parameters from name
 MRVOXELS_API Expected<VdbVolume> fromRaw( const std::filesystem::path& file,
+                                                         const ProgressCallback& cb = {} );
+
+/// Load raw voxels file, parsing parameters from name
+MRVOXELS_API Expected<FloatGrid> gridFromRaw( const std::filesystem::path& file,
                                                          const ProgressCallback& cb = {} );
 
 /// Load all voxel volumes from OpenVDB file
 MRVOXELS_API Expected<std::vector<VdbVolume>> fromVdb( const std::filesystem::path& file,
                                                          const ProgressCallback& cb = {} );
 
+MRVOXELS_API Expected<std::vector<FloatGrid>> gridsFromVdb( const std::filesystem::path& file,
+                                                         const ProgressCallback& cb = {} );
+MRVOXELS_API Expected<std::vector<FloatGrid>> gridsFromVdb( std::istream& in,
+                                                         const ProgressCallback& cb = {} );
+
+
 /// Load voxel from Gav-file with micro CT reconstruction
 MRVOXELS_API Expected<VdbVolume> fromGav( const std::filesystem::path& file, const ProgressCallback& cb = {} );
 /// Load voxel from Gav-stream with micro CT reconstruction
 MRVOXELS_API Expected<VdbVolume> fromGav( std::istream& in, const ProgressCallback& cb = {} );
 
+
+/// Detects the format from file extension and loads voxels from it
+MRVOXELS_API Expected<std::vector<FloatGrid>> gridsFromAnySupportedFormat( const std::filesystem::path& file,
+                                                                        const ProgressCallback& cb = {} );
 
 /// Detects the format from file extension and loads voxels from it
 MRVOXELS_API Expected<std::vector<VdbVolume>> fromAnySupportedFormat( const std::filesystem::path& file,
@@ -80,7 +103,7 @@ struct LoadingTiffSettings
 MRVOXELS_API Expected<VdbVolume> loadTiffDir( const LoadingTiffSettings& settings );
 #endif // MRVOXELS_NO_TIFF
 
-#ifndef MR_PARSING_FOR_PB11_BINDINGS
+#ifndef MR_PARSING_FOR_ANY_BINDINGS
 using VoxelsLoader = Expected<std::vector<VdbVolume>>( * )( const std::filesystem::path&, const ProgressCallback& );
 
 MR_FORMAT_REGISTRY_EXTERNAL_DECL( MRVOXELS_API, VoxelsLoader )

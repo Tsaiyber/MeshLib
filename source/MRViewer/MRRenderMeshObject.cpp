@@ -104,7 +104,7 @@ bool RenderMeshObject::render( const ModelRenderParams& renderParams )
     GL_EXEC( glUniform1i( glGetUniformLocation( shader, "perVertColoring" ), objMesh_->getColoringType() == ColoringType::VertsColorMap ) );
     GL_EXEC( glUniform1i( glGetUniformLocation( shader, "perFaceColoring" ), objMesh_->getColoringType() == ColoringType::FacesColorMap ) );
 
-    GL_EXEC( glUniform1i( glGetUniformLocation( shader, "useClippingPlane" ), objMesh_->getVisualizeProperty( VisualizeMaskType::ClippedByPlane, renderParams.viewportId ) ) );
+    GL_EXEC( glUniform1i( glGetUniformLocation( shader, "useClippingPlane" ), objMesh_->globalClippedByPlane( renderParams.viewportId ) ) );
     GL_EXEC( glUniform4f( glGetUniformLocation( shader, "clippingPlane" ),
         renderParams.clipPlane.n.x, renderParams.clipPlane.n.y,
         renderParams.clipPlane.n.z, renderParams.clipPlane.d ) );
@@ -189,7 +189,7 @@ void RenderMeshObject::renderPicker( const ModelBaseRenderParams& parameters, un
 
     GL_EXEC( glUniform1ui( glGetUniformLocation( shader, "primBucketSize" ), 3 ) );
 
-    GL_EXEC( glUniform1i( glGetUniformLocation( shader, "useClippingPlane" ), objMesh_->getVisualizeProperty( VisualizeMaskType::ClippedByPlane, parameters.viewportId ) ) );
+    GL_EXEC( glUniform1i( glGetUniformLocation( shader, "useClippingPlane" ), objMesh_->globalClippedByPlane( parameters.viewportId ) ) );
     GL_EXEC( glUniform4f( glGetUniformLocation( shader, "clippingPlane" ),
         parameters.clipPlane.n.x, parameters.clipPlane.n.y, parameters.clipPlane.n.z, parameters.clipPlane.d ) );
     GL_EXEC( glUniform1ui( glGetUniformLocation( shader, "uniGeomId" ), geomId ) );
@@ -273,7 +273,7 @@ void RenderMeshObject::renderEdges_( const ModelRenderParams& renderParams, bool
     GL_EXEC( glUniform1i( glGetUniformLocation( shader, "perVertColoring" ), false ) );
     GL_EXEC( glUniform1i( glGetUniformLocation( shader, "perLineColoring" ), false ) );
 
-    GL_EXEC( glUniform1i( glGetUniformLocation( shader, "useClippingPlane" ), objMesh_->getVisualizeProperty( VisualizeMaskType::ClippedByPlane, renderParams.viewportId ) ) );
+    GL_EXEC( glUniform1i( glGetUniformLocation( shader, "useClippingPlane" ), objMesh_->globalClippedByPlane( renderParams.viewportId ) ) );
     GL_EXEC( glUniform4f( glGetUniformLocation( shader, "clippingPlane" ),
         renderParams.clipPlane.n.x, renderParams.clipPlane.n.y, renderParams.clipPlane.n.z, renderParams.clipPlane.d ) );
 
@@ -322,7 +322,7 @@ void RenderMeshObject::renderMeshEdges_( const ModelRenderParams& renderParams, 
     GL_EXEC( glUniform1i( glGetUniformLocation( shader, "perVertColoring" ), false ) );
     GL_EXEC( glUniform1i( glGetUniformLocation( shader, "perLineColoring" ), false ) );
 
-    GL_EXEC( glUniform1i( glGetUniformLocation( shader, "useClippingPlane" ), objMesh_->getVisualizeProperty( VisualizeMaskType::ClippedByPlane, renderParams.viewportId ) ) );
+    GL_EXEC( glUniform1i( glGetUniformLocation( shader, "useClippingPlane" ), objMesh_->globalClippedByPlane( renderParams.viewportId ) ) );
     GL_EXEC( glUniform4f( glGetUniformLocation( shader, "clippingPlane" ),
         renderParams.clipPlane.n.x, renderParams.clipPlane.n.y, renderParams.clipPlane.n.z, renderParams.clipPlane.d ) );
 
@@ -358,7 +358,7 @@ void RenderMeshObject::renderMeshVerts_( const ModelRenderParams& renderParams, 
     GL_EXEC( glUniform1i( glGetUniformLocation( shader, "invertNormals" ), objMesh_->getVisualizeProperty( VisualizeMaskType::InvertedNormals, renderParams.viewportId ) ) );
     GL_EXEC( glUniform1i( glGetUniformLocation( shader, "perVertColoring" ), objMesh_->getColoringType() == ColoringType::VertsColorMap ) );
 
-    GL_EXEC( glUniform1i( glGetUniformLocation( shader, "useClippingPlane" ), objMesh_->getVisualizeProperty( VisualizeMaskType::ClippedByPlane, renderParams.viewportId ) ) );
+    GL_EXEC( glUniform1i( glGetUniformLocation( shader, "useClippingPlane" ), objMesh_->globalClippedByPlane( renderParams.viewportId ) ) );
     GL_EXEC( glUniform4f( glGetUniformLocation( shader, "clippingPlane" ),
         renderParams.clipPlane.n.x, renderParams.clipPlane.n.y,
         renderParams.clipPlane.n.z, renderParams.clipPlane.d ) );
@@ -828,7 +828,13 @@ RenderBufferRef<Vector3f> RenderMeshObject::loadVertPosBuffer_()
     }
     else
     {
-        auto buffer = glBuffer.prepareBuffer<Vector3f>( vertPosSize_ = topology.lastValidVert() + 1 );
+        vertPosSize_ = topology.lastValidVert() + 1;
+        if ( vertPosSize_ > mesh->points.size() )
+        {
+            assert( false );
+            vertPosSize_ = (int)mesh->points.size();
+        }
+        auto buffer = glBuffer.prepareBuffer<Vector3f>( vertPosSize_ );
         std::copy( MR::begin( mesh->points ), MR::begin( mesh->points ) + vertPosSize_, buffer.data() );
         return buffer;
     }
@@ -898,8 +904,14 @@ RenderBufferRef<Vector3f> RenderMeshObject::loadVertNormalsBuffer_()
         }
         else
         {
-            auto buffer = glBuffer.prepareBuffer<Vector3f>( vertNormalsSize_ = topology.lastValidVert() + 1 );
-            std::copy( MR::begin( vertNormals ), MR::end( vertNormals ), buffer.data() );
+            vertNormalsSize_ = topology.lastValidVert() + 1;
+            if ( vertNormalsSize_ > vertNormals.size() )
+            {
+                assert( false && "lastValidVert() + 1 > computed normals amount" );
+                vertNormalsSize_ = (int)vertNormals.size();
+            }
+            auto buffer = glBuffer.prepareBuffer<Vector3f>( vertNormalsSize_ );
+            std::copy_n( vertNormals.data(), vertNormalsSize_, buffer.data() );
             return buffer;
         }
     }
@@ -945,7 +957,13 @@ RenderBufferRef<Color> RenderMeshObject::loadVertColorsBuffer_()
     }
     else
     {
-        auto buffer = glBuffer.prepareBuffer<Color>( vertColorsSize_ = topology.lastValidVert() + 1 );
+        vertColorsSize_ = topology.lastValidVert() + 1;
+        if ( vertColorsSize_ > vertsColorMap.size() )
+        {
+            assert( false );
+            vertColorsSize_ = (int)vertsColorMap.size();
+        }
+        auto buffer = glBuffer.prepareBuffer<Color>( vertColorsSize_ );
         std::copy( MR::begin( vertsColorMap ), MR::begin( vertsColorMap ) + vertColorsSize_, buffer.data() );
         return buffer;
     }
