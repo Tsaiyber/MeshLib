@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MRPch/MRBindingMacros.h"
 #include "MRMeshMath.h"
 #include "MRMeshBuilderTypes.h"
 #include "MRMeshProject.h"
@@ -51,7 +52,7 @@ struct [[nodiscard]] Mesh
 
     /// construct mesh from point triples;
     /// \param duplicateNonManifoldVertices = false, all coinciding points are given the same VertId in the result;
-    /// \param duplicateNonManifoldVertices = true, it tries to avoid non-manifold vertices by creating duplicate vertices with same coordinates 
+    /// \param duplicateNonManifoldVertices = true, it tries to avoid non-manifold vertices by creating duplicate vertices with same coordinates
     [[nodiscard]] MRMESH_API static Mesh fromPointTriples( const std::vector<Triangle3f> & posTriples, bool duplicateNonManifoldVertices );
 
     /// compare that two meshes are exactly the same
@@ -67,7 +68,7 @@ struct [[nodiscard]] Mesh
     [[nodiscard]] Vector3f edgeVector( EdgeId e ) const { return MR::edgeVector( topology, points, e ); }
 
     /// returns line segment of given edge
-    [[nodiscard]] LineSegm3f edgeSegment( EdgeId e ) const { return MR::edgeSegment( topology, points, e ); }
+    [[nodiscard]] MRMESH_API LineSegm3f edgeSegment( EdgeId e ) const;
 
     /// returns a point on the edge: origin point for f=0 and destination point for f=1
     [[nodiscard]] Vector3f edgePoint( EdgeId e, float f ) const { return MR::edgePoint( topology, points, e, f ); }
@@ -82,7 +83,8 @@ struct [[nodiscard]] Mesh
     void getLeftTriPoints( EdgeId e, Vector3f & v0, Vector3f & v1, Vector3f & v2 ) const { return MR::getLeftTriPoints( topology, points, e, v0, v1, v2 ); }
 
     /// returns three points of left face of e: v[0] = orgPnt( e ), v[1] = destPnt( e )
-    void getLeftTriPoints( EdgeId e, Vector3f (&v)[3] ) const { return MR::getLeftTriPoints( topology, points, e, v ); }
+    /// This one is not in the bindings because of the reference-to-array parameter.
+    MR_BIND_IGNORE void getLeftTriPoints( EdgeId e, Vector3f (&v)[3] ) const { return MR::getLeftTriPoints( topology, points, e, v ); }
 
     /// returns three points of left face of e: res[0] = orgPnt( e ), res[1] = destPnt( e )
     [[nodiscard]] Triangle3f getLeftTriPoints( EdgeId e ) const { return MR::getLeftTriPoints( topology, points, e ); }
@@ -91,7 +93,8 @@ struct [[nodiscard]] Mesh
     void getTriPoints( FaceId f, Vector3f & v0, Vector3f & v1, Vector3f & v2 ) const { return MR::getTriPoints( topology, points, f, v0, v1, v2 ); }
 
     /// returns three points of given face
-    void getTriPoints( FaceId f, Vector3f (&v)[3] ) const { return MR::getTriPoints( topology, points, f, v ); }
+    /// This one is not in the bindings because of the reference-to-array parameter.
+    MR_BIND_IGNORE void getTriPoints( FaceId f, Vector3f (&v)[3] ) const { return MR::getTriPoints( topology, points, f, v ); }
 
     /// returns three points of given face
     [[nodiscard]] Triangle3f getTriPoints( FaceId f ) const { return MR::getTriPoints( topology, points, f ); }
@@ -104,7 +107,7 @@ struct [[nodiscard]] Mesh
 
     /// returns aspect ratio of given mesh triangle equal to the ratio of the circum-radius to twice its in-radius
     [[nodiscard]] float triangleAspectRatio( FaceId f ) const { return MR::triangleAspectRatio( topology, points, f ); }
-    
+
     /// returns squared circumcircle diameter of given mesh triangle
     [[nodiscard]] float circumcircleDiameterSq( FaceId f ) const { return MR::circumcircleDiameterSq( topology, points, f ); }
 
@@ -197,6 +200,10 @@ struct [[nodiscard]] Mesh
     /// computes triangular face normal from its vertices
     [[nodiscard]] Vector3f normal( FaceId f ) const { return MR::normal( topology, points, f ); }
 
+    /// returns the plane containing given triangular face with normal looking outwards
+    [[nodiscard]] MRMESH_API Plane3f getPlane3f( FaceId f ) const;
+    [[nodiscard]] MRMESH_API Plane3d getPlane3d( FaceId f ) const;
+
     /// computes sum of directed double areas of all triangles around given vertex
     [[nodiscard]] Vector3f dirDblArea( VertId v ) const { return MR::dirDblArea( topology, points, v ); }
 
@@ -227,7 +234,7 @@ struct [[nodiscard]] Mesh
     /// \return signed distance from pt to mesh: positive value - outside mesh, negative - inside mesh;
     /// this method can return wrong sign if the closest point is located on self-intersecting part of the mesh
     [[nodiscard]] MRMESH_API float signedDistance( const Vector3f & pt, const MeshProjectionResult & proj, const FaceBitSet * region = nullptr ) const;
-    [[deprecated]] MRMESH_API float signedDistance( const Vector3f & pt, const MeshTriPoint & proj, const FaceBitSet * region = nullptr ) const;
+    [[deprecated]] MRMESH_API MR_BIND_IGNORE float signedDistance( const Vector3f & pt, const MeshTriPoint & proj, const FaceBitSet * region = nullptr ) const;
 
     /// given a point (pt) in 3D, computes the closest point on mesh, and
     /// \return signed distance from pt to mesh: positive value - outside mesh, negative - inside mesh;
@@ -380,15 +387,16 @@ struct [[nodiscard]] Mesh
     VertId splitFace( FaceId f, FaceBitSet * region = nullptr, FaceHashMap * new2Old = nullptr ) { return splitFace( f, triCenter( f ), region, new2Old ); }
 
     /// appends another mesh as separate connected component(s) to this
+    MRMESH_API void addMesh( const Mesh & from, PartMapping map = {}, bool rearrangeTriangles = false );
     MRMESH_API void addMesh( const Mesh & from,
         // optionally returns mappings: from.id -> this.id
-        FaceMap * outFmap = nullptr, VertMap * outVmap = nullptr, WholeEdgeMap * outEmap = nullptr, bool rearrangeTriangles = false );
-    [[deprecated]] void addPart( const Mesh & from, FaceMap * outFmap = nullptr, VertMap * outVmap = nullptr, WholeEdgeMap * outEmap = nullptr, bool rearrangeTriangles = false )
+        FaceMap * outFmap, VertMap * outVmap = nullptr, WholeEdgeMap * outEmap = nullptr, bool rearrangeTriangles = false );
+    [[deprecated]] MR_BIND_IGNORE void addPart( const Mesh & from, FaceMap * outFmap = nullptr, VertMap * outVmap = nullptr, WholeEdgeMap * outEmap = nullptr, bool rearrangeTriangles = false )
         { addMesh( from, outFmap, outVmap, outEmap, rearrangeTriangles ); }
 
     /// appends whole or part of another mesh as separate connected component(s) to this
     MRMESH_API void addMeshPart( const MeshPart & from, const PartMapping & map );
-    [[deprecated]] void addPartByMask( const Mesh & from, const FaceBitSet & fromFaces, const PartMapping & map ) { addMeshPart( { from, &fromFaces }, map ); }
+    [[deprecated]] MR_BIND_IGNORE void addPartByMask( const Mesh & from, const FaceBitSet & fromFaces, const PartMapping & map ) { addMeshPart( { from, &fromFaces }, map ); }
 
     /// appends whole or part of another mesh to this joining added faces with existed ones along given contours
     /// \param flipOrientation true means that every (from) triangle is inverted before adding
@@ -396,31 +404,18 @@ struct [[nodiscard]] Mesh
         const std::vector<EdgePath> & thisContours = {}, // contours on this mesh that have to be stitched with
         const std::vector<EdgePath> & fromContours = {}, // contours on from mesh during addition
         // optionally returns mappings: from.id -> this.id
-        const PartMapping & map = {} );
-    [[deprecated]] void addPartByMask( const Mesh & from, const FaceBitSet & fromFaces, bool flipOrientation = false,
+        PartMapping map = {} );
+    [[deprecated]] MR_BIND_IGNORE void addPartByMask( const Mesh & from, const FaceBitSet & fromFaces, bool flipOrientation = false,
         const std::vector<EdgePath> & thisContours = {}, const std::vector<EdgePath> & fromContours = {}, const PartMapping & map = {} )
         { addMeshPart( { from, &fromFaces }, flipOrientation, thisContours, fromContours, map ); }
-
-    /// fromFaces contains mapping from this-mesh (considering it is empty) to from-mesh
-    MRMESH_API void addPartByFaceMap( const Mesh & from, const FaceMap & fromFaces, bool flipOrientation = false,
-        const std::vector<EdgePath> & thisContours = {}, // contours on this mesh that have to be stitched with
-        const std::vector<EdgePath> & fromContours = {}, // contours on from mesh during addition
-        // optionally returns mappings: from.id -> this.id
-        const PartMapping & map = {} );
-
-    /// both addPartByMask and addPartByFaceMap call this general implementation
-    template<typename I>
-    MRMESH_API void addPartBy( const Mesh & from, I fbegin, I fend, size_t fcount, bool flipOrientation = false,
-        const std::vector<EdgePath> & thisContours = {},
-        const std::vector<EdgePath> & fromContours = {},
-        PartMapping map = {} );
 
     /// creates new mesh from given triangles of this mesh
     MRMESH_API Mesh cloneRegion( const FaceBitSet & region, bool flipOrientation = false, const PartMapping & map = {} ) const;
 
-    /// tightly packs all arrays eliminating lone edges and invalid faces, vertices and points,
-    /// optionally returns mappings: old.id -> new.id
-    MRMESH_API void pack( FaceMap * outFmap = nullptr, VertMap * outVmap = nullptr, WholeEdgeMap * outEmap = nullptr, bool rearrangeTriangles = false );
+    /// tightly packs all arrays eliminating lone edges and invalid faces, vertices and points
+    MRMESH_API void pack( const PartMapping & map = {}, bool rearrangeTriangles = false );
+    MRMESH_API void pack( /// optionally returns mappings: old.id -> new.id
+        FaceMap * outFmap, VertMap * outVmap = nullptr, WholeEdgeMap * outEmap = nullptr, bool rearrangeTriangles = false );
 
     /// tightly packs all arrays eliminating lone edges and invalid faces, vertices and points,
     /// reorder all faces, vertices and edges according to given maps, each containing old id -> new id mapping
@@ -431,7 +426,7 @@ struct [[nodiscard]] Mesh
     MRMESH_API PackMapping packOptimally( bool preserveAABBTree = true );
     MRMESH_API Expected<PackMapping> packOptimally( bool preserveAABBTree, ProgressCallback cb );
 
-    /// deletes multiple given faces, also deletes adjacent edges and vertices if they were not shared by remaining faces ant not in \param keepFaces
+    /// deletes multiple given faces, also deletes adjacent edges and vertices if they were not shared by remaining faces and not in \param keepFaces
     MRMESH_API void deleteFaces( const FaceBitSet & fs, const UndirectedEdgeBitSet * keepEdges = nullptr );
 
     /// finds the closest mesh point on this mesh (or its region) to given point;

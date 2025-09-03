@@ -10,6 +10,10 @@ ELSE()
   string(REPLACE "-Wextra" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   string(REPLACE "-Werror" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   string(REPLACE "-pedantic-errors" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+
+  IF(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 20)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-nontrivial-memcall")
+  ENDIF()
 ENDIF()
 
 set(IMGUI_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/imgui")
@@ -38,7 +42,11 @@ file(GLOB FREETYPE_HEADERS
   "${IMGUI_ROOT}/misc/freetype/*.h"
 )
 
-add_library(imgui SHARED ${SOURCES} ${HEADERS} ${BACKEND_HEADERS} ${FREETYPE_HEADERS})
+file(GLOB MISC_HEADERS
+  "${IMGUI_ROOT}/misc/cpp/*.h"
+)
+
+add_library(imgui SHARED ${SOURCES} ${HEADERS} ${BACKEND_HEADERS} ${FREETYPE_HEADERS} ${MISC_HEADERS})
 
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${IMGUI_ROOT}>
@@ -90,6 +98,10 @@ install(
 install(
   FILES ${FREETYPE_HEADERS}
   DESTINATION "${MR_INCLUDE_DIR}/${PROJECT_NAME}/misc/freetype"
+)
+install(
+  FILES ${MISC_HEADERS}
+  DESTINATION "${MR_INCLUDE_DIR}/${PROJECT_NAME}/misc/cpp"
 )
 
 install(

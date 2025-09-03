@@ -31,6 +31,12 @@ class ViewerTitle;
 
 class SpaceMouseHandler;
 
+class IDragDropHandler;
+
+class CornerControllerObject;
+
+class ViewportGlobalBasis;
+
 // This struct contains rules for viewer launch
 struct LaunchParams
 {
@@ -71,10 +77,17 @@ struct FileLoadOptions
     /// first part of undo name
     const char * undoPrefix = "Open ";
 
-    /// true here will replace existing scene even if more than one file is open
-    bool forceReplaceScene = false;
+    enum class ReplaceMode
+    {
+        ContructionBased, ///< replace current scene if new one was loaded from single scene file
+        ForceReplace,
+        ForceAdd
+    };
 
-    /// if this callback is set - it is called once when all obects are added to scene
+    /// Determines how to deal with current scene after loading new one
+    ReplaceMode replaceMode = ReplaceMode::ContructionBased;
+
+    /// if this callback is set - it is called once when all objects are added to scene
     /// top level objects only are present here
     FilesLoadedCallback loadedCallback;
 };
@@ -169,8 +182,6 @@ public:
     MRVIEWER_API bool touchpadZoomGestureEnd();
     // This function is called when window should close, if return value is true, window will stay open
     MRVIEWER_API bool interruptWindowClose();
-    // callback to update connected / disconnected joystick
-    MRVIEWER_API void joystickUpdateConnected( int jid, int event );
 
     // Draw everything
     MRVIEWER_API void draw( bool force = false );
@@ -485,8 +496,8 @@ public:
     std::vector<std::string> commandArgs;
 
     std::shared_ptr<ObjectMesh> basisAxes;
-    std::shared_ptr<ObjectMesh> basisViewController;
-    std::shared_ptr<ObjectMesh> globalBasisAxes;
+    std::unique_ptr<CornerControllerObject> basisViewController;
+    std::unique_ptr<ViewportGlobalBasis> globalBasis;
     std::shared_ptr<ObjectMesh> rotationSphere;
     // Stores clipping plane mesh
     std::shared_ptr<ObjectMesh> clippingPlaneObject;
@@ -534,16 +545,21 @@ public:
     SpaceMouseKeySignal spaceMouseRepeatSignal; // signal is called when spacemouse key is pressed for some time
     // Render events
     using RenderSignal = boost::signals2::signal<void()>;
+    RenderSignal preSetupViewSignal; // signal is called before viewports cleanup and camera setup, so one can customize camera XFs for this frame
     RenderSignal preDrawSignal; // signal is called before scene draw (but after scene setup)
     RenderSignal preDrawPostViewportSignal; // signal is called before scene draw but after viewport.preDraw()
     RenderSignal drawSignal; // signal is called on scene draw (after objects tree but before viewport.postDraw())
     RenderSignal postDrawPreViewportSignal; // signal is called after scene draw but after before viewport.postDraw()
     RenderSignal postDrawSignal; // signal is called after scene draw
     // Scene events
+    using ObjectsLoadedSignal = boost::signals2::signal<void( const std::vector<std::shared_ptr<Object>>& objs, const std::string& errors, const std::string& warnings )>;
     using DragDropSignal = boost::signals2::signal<bool( const std::vector<std::filesystem::path>& paths ), SignalStopHandler>;
     using PostResizeSignal = boost::signals2::signal<void( int x, int y )>;
     using PostRescaleSignal = boost::signals2::signal<void( float xscale, float yscale )>;
     using InterruptCloseSignal = boost::signals2::signal<bool(), SignalStopHandler>;
+    ObjectsLoadedSignal objectsLoadedSignal; // signal is called when objects are loaded by Viewer::loadFiles  function
+    CursorEntranceSignal dragEntranceSignal; // signal is called on drag enter/leave the window
+    MouseMoveSignal dragOverSignal; // signal is called on drag coordinate changed
     DragDropSignal dragDropSignal; // signal is called on drag and drop file
     PostResizeSignal postResizeSignal; // signal is called after window resize
     PostRescaleSignal postRescaleSignal; // signal is called after window rescale
@@ -593,20 +609,38 @@ public:
     [[nodiscard]] const RecentFilesStore &recentFilesStore() const { return *recentFilesStore_; }
     [[nodiscard]] RecentFilesStore &recentFilesStore() { return *recentFilesStore_; }
 
+    /// returns whether to sort the filenames received from Drag&Drop in lexicographical order before adding them in scene
+    [[nodiscard]] bool getSortDroppedFiles() const { return sortDroppedFiles_; }
+
+    /// sets whether to sort the filenames received from Drag&Drop in lexicographical order before adding them in scene
+    void setSortDroppedFiles( bool value ) { sortDroppedFiles_ = value; }
+
+    /// (re)initializes the handler of SpaceMouse events
+    /// \param deviceSignal every device-related event will be sent here: find, connect, disconnect
+    MRVIEWER_API void initSpaceMouseHandler( std::function<void(const std::string&)> deviceSignal = {} );
+
 private:
     Viewer();
     ~Viewer();
 
     // Init window
     int launchInit_( const LaunchParams& params );
+
+    // Called from launchInit_ after window creating to configure it properly
+    bool setupWindow_( const LaunchParams& params );
+
     // Return true if OpenGL loaded successfully
     bool checkOpenGL_(const LaunchParams& params );
+
     // Init base objects
     void init_();
+
     // Init all plugins on start
     void initPlugins_();
+
     // Shut all plugins at the end
     void shutdownPlugins_();
+
 #ifdef __EMSCRIPTEN__
     void mainLoopFunc_();
     static void emsMainInfiniteLoop();
@@ -633,6 +667,7 @@ private:
     std::unique_ptr<SpaceMouseController> spaceMouseController_;
     std::unique_ptr<TouchesController> touchesController_;
     std::unique_ptr<MouseController> mouseController_;
+    std::unique_ptr<IDragDropHandler> dragDropAdvancedHandler_;
 
     std::unique_ptr<RecentFilesStore> recentFilesStore_;
     std::unique_ptr<FrameCounter> frameCounter_;
@@ -663,7 +698,6 @@ private:
     void initBasisViewControllerObject_();
     void initClippingPlaneObject_();
     void initRotationCenterObject_();
-    void initSpaceMouseHandler_();
 
     // recalculate pixel ratio
     void updatePixelRatio_();
@@ -691,6 +725,8 @@ private:
 
     bool hasScaledFramebuffer_{ false };
 
+    bool sortDroppedFiles_{ true };
+
     LaunchParams launchParams_;
 
     ViewportId getFirstAvailableViewportId_() const;
@@ -702,7 +738,7 @@ private:
 
     std::shared_ptr<SpaceMouseHandler> spaceMouseHandler_;
 
-    std::vector<boost::signals2::scoped_connection> colorUpdateConnections_;
+    std::vector<boost::signals2::scoped_connection> uiUpdateConnections_;
 
     friend MRVIEWER_API Viewer& getViewerInstance();
 };

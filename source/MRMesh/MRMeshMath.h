@@ -1,8 +1,8 @@
 #pragma once
 
+#include "MRPch/MRBindingMacros.h"
 #include "MRVector.h"
 #include "MRMeshTopology.h"
-#include "MRLineSegm.h"
 #include "MRPointOnFace.h"
 
 namespace MR
@@ -27,10 +27,7 @@ namespace MR
 }
 
 /// returns line segment of given edge
-[[nodiscard]] inline LineSegm3f edgeSegment( const MeshTopology & topology, const VertCoords & points, EdgeId e )
-{
-    return { orgPnt( topology, points, e ), destPnt( topology, points, e ) };
-}
+MRMESH_API LineSegm3f edgeSegment( const MeshTopology & topology, const VertCoords & points, EdgeId e );
 
 /// returns a point on the edge: origin point for f=0 and destination point for f=1
 [[nodiscard]] inline Vector3f edgePoint( const MeshTopology & topology, const VertCoords & points, EdgeId e, float f )
@@ -54,7 +51,8 @@ namespace MR
 MRMESH_API void getLeftTriPoints( const MeshTopology & topology, const VertCoords & points, EdgeId e, Vector3f & v0, Vector3f & v1, Vector3f & v2 );
 
 /// returns three points of left face of e: v[0] = orgPnt( e ), v[1] = destPnt( e )
-inline void getLeftTriPoints( const MeshTopology & topology, const VertCoords & points, EdgeId e, Vector3f (&v)[3] )
+/// This one is not in the bindings because of the reference-to-array parameter.
+MR_BIND_IGNORE inline void getLeftTriPoints( const MeshTopology & topology, const VertCoords & points, EdgeId e, Vector3f (&v)[3] )
 {
     getLeftTriPoints( topology, points, e, v[0], v[1], v[2] );
 }
@@ -74,7 +72,8 @@ inline void getTriPoints( const MeshTopology & topology, const VertCoords & poin
 }
 
 /// returns three points of given face
-inline void getTriPoints( const MeshTopology & topology, const VertCoords & points, FaceId f, Vector3f (&v)[3] )
+/// This one is not in the bindings because of the reference-to-array parameter.
+MR_BIND_IGNORE inline void getTriPoints( const MeshTopology & topology, const VertCoords & points, FaceId f, Vector3f (&v)[3] )
 {
     getTriPoints( topology, points, f, v[0], v[1], v[2] );
 }
@@ -95,7 +94,7 @@ inline void getTriPoints( const MeshTopology & topology, const VertCoords & poin
 
 /// returns aspect ratio of given mesh triangle equal to the ratio of the circum-radius to twice its in-radius
 [[nodiscard]] MRMESH_API float triangleAspectRatio( const MeshTopology & topology, const VertCoords & points, FaceId f );
-    
+
 /// returns squared circumcircle diameter of given mesh triangle
 [[nodiscard]] MRMESH_API float circumcircleDiameterSq( const MeshTopology & topology, const VertCoords & points, FaceId f );
 
@@ -220,6 +219,10 @@ inline void getTriPoints( const MeshTopology & topology, const VertCoords & poin
 {
     return dirDblArea( topology, points, f ).normalized();
 }
+
+/// returns the plane containing given triangular face with normal looking outwards
+[[nodiscard]] MRMESH_API Plane3f getPlane3f( const MeshTopology & topology, const VertCoords & points, FaceId f );
+[[nodiscard]] MRMESH_API Plane3d getPlane3d( const MeshTopology & topology, const VertCoords & points, FaceId f );
 
 /// computes sum of directed double areas of all triangles around given vertex
 [[nodiscard]] MRMESH_API Vector3f dirDblArea( const MeshTopology & topology, const VertCoords & points, VertId v );

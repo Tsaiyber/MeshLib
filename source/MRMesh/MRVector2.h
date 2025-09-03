@@ -5,6 +5,8 @@
 #include "MRPch/MRBindingMacros.h"
 #include <cmath>
 #include <algorithm>
+#include <cstring>
+#include <utility>
 
 namespace MR
 {
@@ -43,7 +45,9 @@ struct Vector2
     static constexpr Vector2 minusX() noexcept { return Vector2( -1, 0 ); }
     static constexpr Vector2 minusY() noexcept { return Vector2( 0, -1 ); }
 
-    template <typename U>
+    // Here `T == U` doesn't seem to cause any issues in the C++ code, but we're still disabling it because it somehow gets emitted
+    //   when generating the bindings, and looks out of place there.
+    template <typename U> MR_REQUIRES_IF_SUPPORTED( !std::is_same_v<T, U> )
     constexpr explicit Vector2( const Vector2<U> & v ) noexcept : x( T( v.x ) ), y( T( v.y ) ) { }
 
     constexpr const T & operator []( int e ) const noexcept { return *( &x + e ); }
@@ -97,10 +101,10 @@ struct Vector2
             return b * ( 1 / a );
     }
 
-    friend constexpr Vector2<T> & operator +=( Vector2<T> & a, const Vector2<T> & b ) MR_REQUIRES_IF_SUPPORTED( requires{ a + b; } ) { a.x += b.x; a.y += b.y; return a; }
-    friend constexpr Vector2<T> & operator -=( Vector2<T> & a, const Vector2<T> & b ) MR_REQUIRES_IF_SUPPORTED( requires{ a - b; } ) { a.x -= b.x; a.y -= b.y; return a; }
-    friend constexpr Vector2<T> & operator *=( Vector2<T> & a,               T    b ) MR_REQUIRES_IF_SUPPORTED( requires{ a * b; } ) { a.x *= b; a.y *= b; return a; }
-    friend constexpr Vector2<T> & operator /=( Vector2<T> & a,               T    b ) MR_REQUIRES_IF_SUPPORTED( requires{ a / b; } )
+    friend constexpr Vector2<T> & operator +=( Vector2<T> & a, const Vector2<T> & b ) { a.x += b.x; a.y += b.y; return a; }
+    friend constexpr Vector2<T> & operator -=( Vector2<T> & a, const Vector2<T> & b ) { a.x -= b.x; a.y -= b.y; return a; }
+    friend constexpr Vector2<T> & operator *=( Vector2<T> & a,               T    b ) { a.x *= b; a.y *= b; return a; }
+    friend constexpr Vector2<T> & operator /=( Vector2<T> & a,               T    b )
     {
         if constexpr ( std::is_integral_v<T> )
             { a.x /= b; a.y /= b; return a; }
@@ -200,3 +204,15 @@ MR_BIND_IGNORE inline auto end( Vector2<T> & v ) { return &v[2]; }
 #endif
 
 } // namespace MR
+
+template<>
+struct std::hash<MR::Vector2f>
+{
+    size_t operator()( MR::Vector2f const& p ) const noexcept
+    {
+        std::uint64_t xy;
+        static_assert( sizeof( float ) == sizeof( std::uint32_t ) );
+        std::memcpy( &xy, &p.x, sizeof( std::uint64_t ) );
+        return size_t( xy );
+    }
+};

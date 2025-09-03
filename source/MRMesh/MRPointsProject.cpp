@@ -4,6 +4,7 @@
 #include "MRFewSmallest.h"
 #include "MRBuffer.h"
 #include "MRBitSetParallelFor.h"
+#include "MRInplaceStack.h"
 #include "MRParallelFor.h"
 #include "MRTimer.h"
 #include "MRPch/MRTBB.h"
@@ -15,30 +16,22 @@ namespace {
 
 struct SubTask
 {
-    NodeId n;
+    NoInitNodeId n;
     float distSq;
-    SubTask() : n( noInit ) {}
-    SubTask( NodeId n, float dd ) : n( n ), distSq( dd ) {}
 };
 
 } //anonymous namespace
 
 
-PointsProjectionResult findProjectionOnPoints( const Vector3f& pt, const PointCloud& pc,
-    float upDistLimitSq /*= FLT_MAX*/,
-    const AffineXf3f* xf /*= nullptr*/,
-    float loDistLimitSq /*= 0*/,
-    VertPredicate skipCb /*= {}*/ )
+PointsProjectionResult findProjectionOnPoints( const Vector3f& pt, const PointCloudPart& pcp,
+    float upDistLimitSq, const AffineXf3f* xf, float loDistLimitSq, VertPredicate skipCb )
 {
-    const auto& tree = pc.getAABBTree();
-    return findProjectionOnPoints( pt, tree, upDistLimitSq, xf, loDistLimitSq, skipCb );
+    const auto& tree = pcp.cloud.getAABBTree();
+    return findProjectionOnPoints( pt, tree, upDistLimitSq, xf, loDistLimitSq, pcp.region, skipCb );
 }
 
 PointsProjectionResult findProjectionOnPoints( const Vector3f& pt, const AABBTreePoints& tree,
-    float upDistLimitSq /*= FLT_MAX*/,
-    const AffineXf3f* xf /*= nullptr*/,
-    float loDistLimitSq /*= 0*/,
-    VertPredicate skipCb /*= {}*/ )
+    float upDistLimitSq, const AffineXf3f* xf, float loDistLimitSq, const VertBitSet* region, VertPredicate skipCb )
 {
     const auto& orderedPoints = tree.orderedPoints();
 
@@ -47,31 +40,27 @@ PointsProjectionResult findProjectionOnPoints( const Vector3f& pt, const AABBTre
     if ( tree.nodes().empty() )
         return res;
 
-    constexpr int MaxStackSize = 32; // to avoid allocations
-    SubTask subtasks[MaxStackSize];
-    int stackSize = 0;
+    InplaceStack<SubTask, 32> subtasks;
 
     auto addSubTask = [&] ( const SubTask& s )
     {
         if ( s.distSq < res.distSq )
-        {
-            assert( stackSize < MaxStackSize );
-            subtasks[stackSize++] = s;
-        }
+            subtasks.push( s );
     };
 
     auto getSubTask = [&] ( NodeId n )
     {
         const auto & box = tree.nodes()[n].box;
         float distSq = xf ? transformed( box, *xf ).getDistanceSq( pt ) : box.getDistanceSq( pt );
-        return SubTask( n, distSq );
+        return SubTask { n, distSq };
     };
 
     addSubTask( getSubTask( tree.rootNodeId() ) );
 
-    while ( stackSize > 0 )
+    while ( !subtasks.empty() )
     {
-        const auto s = subtasks[--stackSize];
+        const auto s = subtasks.top();
+        subtasks.pop();
         const auto& node = tree[s.n];
         if ( s.distSq >= res.distSq )
             continue;
@@ -82,6 +71,8 @@ PointsProjectionResult findProjectionOnPoints( const Vector3f& pt, const AABBTre
             bool lowBreak = false;
             for ( int i = first; i < last && !lowBreak; ++i )
             {
+                if ( region && !region->test( orderedPoints[i].id ) )
+                    continue;
                 if ( skipCb && skipCb( orderedPoints[i].id ) )
                     continue;
                 auto proj = xf ? ( *xf )( orderedPoints[i].coord ) : orderedPoints[i].coord;
@@ -131,9 +122,7 @@ void findFewClosestPoints( const Vector3f& pt, const PointCloud& pc, FewSmallest
     if ( tree.nodes().empty() )
         return;
 
-    constexpr int MaxStackSize = 32; // to avoid allocations
-    SubTask subtasks[MaxStackSize];
-    int stackSize = 0;
+    InplaceStack<SubTask, 32> subtasks;
 
     auto topDistSq = [&]
     {
@@ -143,24 +132,22 @@ void findFewClosestPoints( const Vector3f& pt, const PointCloud& pc, FewSmallest
     auto addSubTask = [&] ( const SubTask& s )
     {
         if ( s.distSq < topDistSq() )
-        {
-            assert( stackSize < MaxStackSize );
-            subtasks[stackSize++] = s;
-        }
+            subtasks.push( s );
     };
 
     auto getSubTask = [&] ( NodeId n )
     {
         const auto & box = tree.nodes()[n].box;
         float distSq = xf ? transformed( box, *xf ).getDistanceSq( pt ) : box.getDistanceSq( pt );
-        return SubTask( n, distSq );
+        return SubTask { n, distSq };
     };
 
     addSubTask( getSubTask( tree.rootNodeId() ) );
 
-    while ( stackSize > 0 )
+    while ( !subtasks.empty() )
     {
-        const auto s = subtasks[--stackSize];
+        const auto s = subtasks.top();
+        subtasks.pop();
         const auto& node = tree[s.n];
         if ( s.distSq >= topDistSq() )
             continue;

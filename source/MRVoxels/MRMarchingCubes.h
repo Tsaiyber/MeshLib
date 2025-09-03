@@ -55,6 +55,9 @@ struct MarchingCubesParams
 
     /// this optional function is called when volume is no longer needed to deallocate it and reduce peak memory consumption
     std::function<void()> freeVolume;
+
+    // To allow passing Python lambdas into `positioner`.
+    MR_BIND_PREFER_UNLOCK_GIL_WHEN_USED_AS_PARAM
 };
 
 // makes Mesh from SimpleVolume with given settings using Marching Cubes algorithm
@@ -72,6 +75,10 @@ MRVOXELS_API Expected<TriMesh> marchingCubesAsTriMesh( const VdbVolume& volume, 
 // makes Mesh from FunctionVolume with given settings using Marching Cubes algorithm
 MRVOXELS_API Expected<Mesh> marchingCubes( const FunctionVolume& volume, const MarchingCubesParams& params = {} );
 MRVOXELS_API Expected<TriMesh> marchingCubesAsTriMesh( const FunctionVolume& volume, const MarchingCubesParams& params = {} );
+
+// makes Mesh from SimpleBinaryVolume with given settings using Marching Cubes algorithm
+MRVOXELS_API Expected<Mesh> marchingCubes( const SimpleBinaryVolume& volume, const MarchingCubesParams& params = {} );
+MRVOXELS_API Expected<TriMesh> marchingCubesAsTriMesh( const SimpleBinaryVolume& volume, const MarchingCubesParams& params = {} );
 
 /// converts volume split on parts by planes z=const into mesh,
 /// last z-layer of previous part must be repeated as first z-layer of next part

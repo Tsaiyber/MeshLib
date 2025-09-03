@@ -13,6 +13,48 @@
 namespace MR
 {
 
+FloatGrid::FloatGrid() = default;
+
+FloatGrid::FloatGrid( std::shared_ptr<OpenVdbFloatGrid> ptr )
+    : ptr_( std::move( ptr ) )
+{
+}
+
+void FloatGrid::reset() noexcept
+{
+    ptr_.reset();
+}
+
+void FloatGrid::swap( FloatGrid& other ) noexcept
+{
+    ptr_.swap( other.ptr_ );
+}
+
+OpenVdbFloatGrid* FloatGrid::get() const noexcept
+{
+    return ptr_.get();
+}
+
+OpenVdbFloatGrid& FloatGrid::operator*() const noexcept
+{
+    return *ptr_;
+}
+
+OpenVdbFloatGrid* FloatGrid::operator->() const noexcept
+{
+    return ptr_.get();
+}
+
+FloatGrid::operator bool() const noexcept
+{
+    return (bool)ptr_;
+}
+
+std::shared_ptr<OpenVdbFloatGrid> FloatGrid::toVdb() const noexcept
+{
+    return ptr_;
+}
+
 size_t heapBytes( const FloatGrid& grid )
 {
     return grid ? grid->memUsage() : 0;
@@ -107,6 +149,36 @@ FloatGrid cropped( const FloatGrid& grid, const Box3i& box, ProgressCallback cb 
     }
     dest->pruneGrid();
     return MakeFloatGrid( std::move( dest ) );
+}
+
+void gaussianFilter( FloatGrid& grid, int width, int iters, ProgressCallback cb /*= {} */ )
+{
+    if ( !grid )
+        return;
+    // just grows to 100%
+    // first grows fast, then slower
+    ProgressCallback dummyProgressCb;
+    float i = 1.0f;
+    if ( cb )
+        dummyProgressCb = [&] ( float )->bool
+    {
+        i += 1e-4f;
+        return cb( 1.0f - 1.0f / std::sqrt( i ) );
+    };
+    ProgressInterrupter interrupter( dummyProgressCb );
+
+    auto filter = openvdb::tools::Filter<openvdb::FloatGrid, openvdb::FloatGrid::ValueConverter<float>::Type, ProgressInterrupter>( ovdb( *grid ), &interrupter );
+    filter.gaussian( width, iters );
+}
+
+FloatGrid gaussianFiltered( const FloatGrid& grid, int width, int iters, ProgressCallback cb /*= {} */ )
+{
+    if ( !grid )
+        return {};
+    auto dest = MakeFloatGrid( grid->deepCopy() );
+
+    gaussianFilter( dest, width, iters, cb );
+    return dest;
 }
 
 float getValue( const FloatGrid & grid, const Vector3i & p )

@@ -106,6 +106,7 @@ void RibbonMenu::setCustomContextCheckbox(
 
 void RibbonMenu::init( MR::Viewer* _viewer )
 {
+    MR_TIMER;
     ImGuiMenu::init( _viewer );
     // should init instance before load schema (as far as some font are used inside)
     fontManager_.initFontManagerInstance( &fontManager_ );
@@ -170,6 +171,10 @@ void RibbonMenu::init( MR::Viewer* _viewer )
     std::shared_ptr<RibbonSceneObjectsListDrawer> ribbonObjectsSceneListDrawer = std::make_shared<RibbonSceneObjectsListDrawer>();
     ribbonObjectsSceneListDrawer->initRibbonMenu( this );
     sceneObjectsList_ = std::dynamic_pointer_cast< SceneObjectsListDrawer >( ribbonObjectsSceneListDrawer );
+    searcher_.setRequirementsFunc( [this] ( const std::shared_ptr<RibbonMenuItem>& item )->std::string
+    {
+        return getRequirements_( item );
+    } );
 }
 
 void RibbonMenu::shutdown()
@@ -391,7 +396,7 @@ void RibbonMenu::drawCollapseButton_()
     }
 }
 
-void RibbonMenu::drawHelpButton_()
+void RibbonMenu::drawHelpButton_( const std::string& url )
 {
     const auto scaling = menu_scaling();
     auto font = fontManager_.getFontByType( RibbonFontManager::FontType::Icons );
@@ -408,7 +413,7 @@ void RibbonMenu::drawHelpButton_()
     ImGui::PushStyleColor( ImGuiCol_Text, ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::TabText ).getUInt32() );
     ImGui::PushFont( font );
     if ( ImGui::Button( "\xef\x81\x99", ImVec2( btnSize, btnSize ) ) )
-        OpenLink( "https://meshinspector.com/help/en/" );
+        OpenLink( url );
     ImGui::PopFont();
     ImGui::PopStyleColor();
     UI::setTooltipIfHovered( "Open help page", scaling );
@@ -472,10 +477,8 @@ void RibbonMenu::sortObjectsRecursive_( std::shared_ptr<Object> object )
     object->sortChildren();
 }
 
-void RibbonMenu::drawHeaderQuickAccess_()
+void RibbonMenu::drawHeaderQuickAccess_( float menuScaling )
 {
-    const float menuScaling = menu_scaling();
-
     auto itemSpacing = ImVec2( cHeaderQuickAccessXSpacing * menuScaling, ( cTabHeight + cTabYOffset - cHeaderQuickAccessFrameSize ) * menuScaling * 0.5f );
     auto iconSize = cHeaderQuickAccessIconSize;
     auto itemSize = cHeaderQuickAccessFrameSize * menuScaling;
@@ -495,8 +498,10 @@ void RibbonMenu::drawHeaderQuickAccess_()
     const auto availableWidth = getViewerInstance().framebufferSize.x;
     if ( width * 2 > availableWidth )
         return; // dont show header quick panel if window is too small
-
-    ImGui::SetCursorPos( itemSpacing );
+    
+    auto cursorPos = ImGui::GetCursorPos();
+    ImGui::SetCursorPosX( cursorPos.x + itemSpacing.x );
+    ImGui::SetCursorPosY( cursorPos.y + itemSpacing.y );
 
     DrawButtonParams params{ DrawButtonParams::SizeType::Small, ImVec2( itemSize,itemSize ), iconSize,DrawButtonParams::RootType::Header };
 
@@ -537,7 +542,7 @@ void RibbonMenu::drawHeaderPannel_()
         ImVec2( float( getViewerInstance().framebufferSize.x ), ( cTabHeight + cTabYOffset ) * menuScaling ),
         ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::HeaderBackground ).getUInt32() );
 
-    drawHeaderQuickAccess_();
+    drawHeaderQuickAccess_( menuScaling );
 
     ImGui::PushFont( fontManager_.getFontByType( RibbonFontManager::FontType::SemiBold ) );
     // TODO_store: this needs recalc only on scaling change, no need to calc each frame
@@ -554,18 +559,17 @@ void RibbonMenu::drawHeaderPannel_()
         tabSizes[i] = std::max( textSizes[i] + cTabLabelMinPadding * 2 * menuScaling, cTabMinimumWidth * menuScaling );
         summaryTabPannelSize += ( tabSizes[i] + cTabsInterval * menuScaling );
     }
-    // prepare active button
-    bool needActive = hasAnyActiveItem() && toolbar_->getCurrentToolbarWidth() == 0.0f;
-    float activeBtnSize = cTabHeight * menuScaling - 4 * menuScaling; // small offset from border
 
-    // 40 - active button size (optional)
-    // 40 - help button size
-    // 40 - search button size
-    // 40 - collapse button size
-    auto availWidth = ImGui::GetContentRegionAvail().x - ( ( needActive ? 3 : 2 ) * 40.0f ) * menuScaling;
-    searcher_.setSmallUI( availWidth - summaryTabPannelSize < searcher_.getSearchStringWidth() * menuScaling );
-    const float searcherWidth = searcher_.getWidthMenuUI();
-    availWidth -= searcherWidth * menuScaling;
+    float availWidth = 0.0f;
+    {
+        auto backupPos = ImGui::GetCursorPos();
+        ImGui::PopStyleVar( 2 ); // draw helpers with default style
+        availWidth = drawHeaderHelpers_( summaryTabPannelSize, menuScaling );
+        // push header panel style back
+        ImGui::PushStyleVar( ImGuiStyleVar_TabRounding, cTabFrameRounding * menuScaling );
+        ImGui::PushStyleVar( ImGuiStyleVar_ItemSpacing, ImVec2( 0, 0 ) );
+        ImGui::SetCursorPos( backupPos );
+    }
 
     float scrollMax = summaryTabPannelSize - availWidth;
     bool needScroll = scrollMax > 0.0f;
@@ -700,6 +704,23 @@ void RibbonMenu::drawHeaderPannel_()
     ImGui::GetCurrentContext()->CurrentWindow->DrawList->AddLine( ImVec2( 0, separateLinePos ), ImVec2( float( getViewerInstance().framebufferSize.x ), separateLinePos ),
                                                                   ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::HeaderSeparator ).getUInt32() );
 
+}
+
+float RibbonMenu::drawHeaderHelpers_( float requiredTabSize, float menuScaling )
+{
+    // prepare active button
+    bool needActive = hasAnyActiveItem() && toolbar_->getCurrentToolbarWidth() == 0.0f;
+    float activeBtnSize = cTabHeight * menuScaling - 4 * menuScaling; // small offset from border
+
+    // 40 - active button size (optional)
+    // 40 - help button size
+    // 40 - search button size
+    // 40 - collapse button size
+    auto availWidth = ImGui::GetContentRegionAvail().x - ( ( needActive ? 3 : 2 ) * 40.0f ) * menuScaling;
+    searcher_.setSmallUI( availWidth - requiredTabSize < searcher_.getSearchStringWidth() * menuScaling );
+    auto searcherWidth = searcher_.getWidthMenuUI();
+    availWidth -= searcherWidth * menuScaling;
+
     if ( needActive )
     {
         ImGui::SetCursorPos( ImVec2( float( getViewerInstance().framebufferSize.x ) -
@@ -710,11 +731,13 @@ void RibbonMenu::drawHeaderPannel_()
     ImGui::SetCursorPos( ImVec2( float( getViewerInstance().framebufferSize.x ) - ( 70.f + searcherWidth ) * menuScaling, cTabYOffset * menuScaling ) );
     drawSearchButton_();
 
-    ImGui::SetCursorPos( ImVec2( float( getViewerInstance().framebufferSize.x ) - 70.0f * menuScaling, cTabYOffset* menuScaling ) );
-    drawHelpButton_();
+    ImGui::SetCursorPos( ImVec2( float( getViewerInstance().framebufferSize.x ) - 70.0f * menuScaling, cTabYOffset * menuScaling ) );
+    drawHelpButton_( "https://meshinspector.com/inapphelp/" );
 
     ImGui::SetCursorPos( ImVec2( float( getViewerInstance().framebufferSize.x ) - 30.0f * menuScaling, cTabYOffset * menuScaling ) );
     drawCollapseButton_();
+
+    return availWidth;
 }
 
 void RibbonMenu::drawActiveListButton_( float btnSize )
@@ -849,7 +872,8 @@ void RibbonMenu::drawActiveList_()
                 ImGui::PopFont();
             ImGui::SameLine( blockSize.x - btnSize.x - winPadding.x );
             ImGui::SetCursorPosY( savedPos );
-            if ( UI::button( "Close", btnSize ) )
+            auto btnText = "Close" + childName;
+            if ( UI::button( btnText.c_str(), btnSize ) )
                 close = true;
             ImGui::EndChild();
         };
@@ -903,7 +927,7 @@ bool RibbonMenu::drawGroupUngroupButton( const std::vector<std::shared_ptr<Objec
         return someChanges;
 
     Object* parentObj = selected[0]->parent();
-    bool canGroup = parentObj != nullptr && selected.size() >= 2;
+    bool canGroup = parentObj && selected.size() >= 2;
     for ( int i = 1; canGroup && i < selected.size(); ++i )
     {
         if ( selected[i]->parent() != parentObj )
@@ -920,15 +944,13 @@ bool RibbonMenu::drawGroupUngroupButton( const std::vector<std::shared_ptr<Objec
         SCOPED_HISTORY( "Group" );
         AppendHistory<ChangeSceneAction>( "Add object", group, ChangeSceneAction::Type::AddObject );
         parentObj->addChild( group );
-        group->select( true );
         for ( int i = 0; i < selected.size(); ++i )
         {
             // for now do it by one object
             AppendHistory<ChangeSceneAction>( "Remove object", selected[i], ChangeSceneAction::Type::RemoveObject );
             selected[i]->detachFromParent();
-            AppendHistory<ChangeSceneAction>( "Remove object", selected[i], ChangeSceneAction::Type::AddObject );
+            AppendHistory<ChangeSceneAction>( "Add object", selected[i], ChangeSceneAction::Type::AddObject );
             group->addChild( selected[i] );
-            selected[i]->select( false );
         }
     }
 
@@ -945,7 +967,7 @@ bool RibbonMenu::drawGroupUngroupButton( const std::vector<std::shared_ptr<Objec
             }
         }
     }
-    canUngroup = std::all_of( selected.begin(), selected.end(),
+    canUngroup = parentObj && std::all_of( selected.begin(), selected.end(),
         []( const std::shared_ptr<Object>& selObj ) { return !selObj->children().empty(); } );
     if ( canUngroup && UI::button( "Ungroup", Vector2f( -1, 0 ) ) )
     {
@@ -953,26 +975,17 @@ bool RibbonMenu::drawGroupUngroupButton( const std::vector<std::shared_ptr<Objec
         SCOPED_HISTORY( "Ungroup" );
         for ( const auto& selObj : selected )
         {
-            selObj->select( false );
-            SceneReorder task
-            {
-                .to = parentObj
-            };
-            for ( const auto& child : selObj->children() )
-            {
-                if ( child->isAncillary() )
-                    continue;
-                task.who.push_back( child.get() );
-                child->select( true );
-            }
-            [[maybe_unused]] bool reorderDone = sceneReorderWithUndo( task );
+            bool reorderDone = moveAllChildrenWithUndo( *selObj, *parentObj );
             assert( reorderDone );
-            // remove group folder (now empty)
-            auto ptr = std::dynamic_pointer_cast< VisualObject >( selObj );
-            if ( !ptr && selObj->children().empty() )
+            if ( reorderDone )
             {
-                AppendHistory<ChangeSceneAction>( "Remove object", selObj, ChangeSceneAction::Type::RemoveObject );
-                selObj->detachFromParent();
+                // remove group folder (now empty)
+                auto ptr = std::dynamic_pointer_cast< VisualObject >( selObj );
+                if ( !ptr && selObj->children().empty() )
+                {
+                    AppendHistory<ChangeSceneAction>( "Remove object", selObj, ChangeSceneAction::Type::RemoveObject );
+                    selObj->detachFromParent();
+                }
             }
         }
     }
@@ -1146,10 +1159,10 @@ bool RibbonMenu::drawMergeSubtreeButton( const std::vector<std::shared_ptr<Objec
     if ( !needToMerge )
         return false;
 
-    if ( !UI::button( "Merge Subtree", Vector2f( -1, 0 ) ) )
+    if ( !UI::button( "Combine Subtree", Vector2f( -1, 0 ) ) )
         return false;
 
-    SCOPED_HISTORY( "Merge" );
+    SCOPED_HISTORY( "Combine Subtree" );
     for ( auto& subtree : subtrees )
         mergeSubtree( std::move( subtree ) );
 
@@ -1492,7 +1505,6 @@ bool RibbonMenu::itemPressed_( const std::shared_ptr<RibbonMenuItem>& item, cons
 
     if ( !wasActive )
     {
-        searcher_.pushRecentItem( item );
         if ( stateChanged && getViewerInstance().mouseController().getMouseConflicts() > conflicts )
         {
             pushNotification( {
@@ -1564,6 +1576,7 @@ void RibbonMenu::drawSceneListButtons_()
 
 void RibbonMenu::readMenuItemsStructure_()
 {
+    MR_TIMER;
     RibbonSchemaLoader loader;
     loader.loadSchema();
     toolbar_->resetItemsList();
@@ -1925,13 +1938,9 @@ bool RibbonMenu::drawTransformContextMenu_( const std::shared_ptr<Object>& selec
 
     if ( !transformClipboardText_.empty() )
     {
-        Json::Value root;
-        Json::CharReaderBuilder readerBuilder;
-        std::unique_ptr<Json::CharReader> reader{ readerBuilder.newCharReader() };
-        std::string error;
-        if ( reader->parse( transformClipboardText_.data(), transformClipboardText_.data() + transformClipboardText_.size(), &root, &error ) )
+        if ( auto root = deserializeJsonValue( transformClipboardText_ ) )
         {
-            if ( auto tr = deserializeTransform( root ))
+            if ( auto tr = deserializeTransform( *root ) )
             {
                 if ( UI::button( "Paste", Vector2f( buttonSize, 0 ) ) )
                 {
@@ -1968,29 +1977,16 @@ bool RibbonMenu::drawTransformContextMenu_( const std::shared_ptr<Object>& selec
     if ( UI::button( "Load from file", Vector2f( buttonSize, 0 ) ) )
     {
         auto filename = openFileDialog( { .filters = { { "JSON (.json)", "*.json" } } } );
-        std::string errorString;
         if ( !filename.empty() )
         {
-            std::ifstream ifs( filename );
-            if ( ifs )
+            std::string errorString;
+            if ( auto root = deserializeJsonValue( filename ) )
             {
-                std::string text( ( std::istreambuf_iterator<char>( ifs ) ), std::istreambuf_iterator<char>() );
-
-                Json::Value root;
-                Json::CharReaderBuilder readerBuilder;
-                std::unique_ptr<Json::CharReader> reader{ readerBuilder.newCharReader() };
-                std::string error;
-                if ( reader->parse( text.data(), text.data() + text.size(), &root, &error ) )
+                if ( auto tr = deserializeTransform( *root ) )
                 {
-                    if ( auto tr = deserializeTransform( root ))
-                    {
-                        AppendHistory<ChangeXfAction>( "Load Transform from File", selected );
-                        selected->setXf( tr->xf );
-                        uniformScale_ = tr->uniformScale;
-                    } else
-                    {
-                        errorString = "Cannot parse transform";
-                    }
+                    AppendHistory<ChangeXfAction>( "Load Transform from File", selected );
+                    selected->setXf( tr->xf );
+                    uniformScale_ = tr->uniformScale;
                 }
                 else
                 {
@@ -1999,7 +1995,7 @@ bool RibbonMenu::drawTransformContextMenu_( const std::shared_ptr<Object>& selec
             }
             else
             {
-                errorString = "Cannot open file for reading";
+                errorString = "Cannot parse transform";
             }
             if ( !errorString.empty() )
                 pushNotification( { .text = errorString, .type = NotificationType::Error } );
@@ -2170,6 +2166,7 @@ void RibbonMenu::setupShortcuts_()
     addRibbonItemShortcut_( "Bottom View", { GLFW_KEY_KP_7, CONTROL_OR_SUPER }, ShortcutManager::Category::View );
     addRibbonItemShortcut_( "Back View", { GLFW_KEY_KP_1, CONTROL_OR_SUPER }, ShortcutManager::Category::View );
     addRibbonItemShortcut_( "Left View", { GLFW_KEY_KP_3, CONTROL_OR_SUPER }, ShortcutManager::Category::View );
+    addRibbonItemShortcut_( "Show_Hide Global Basis", { GLFW_KEY_G, CONTROL_OR_SUPER }, ShortcutManager::Category::View );
     addRibbonItemShortcut_( "Select objects", { GLFW_KEY_Q, GLFW_MOD_CONTROL }, ShortcutManager::Category::Objects );
     addRibbonItemShortcut_( "Open files", { GLFW_KEY_O, CONTROL_OR_SUPER }, ShortcutManager::Category::Scene );
     addRibbonItemShortcut_( "Save Scene", { GLFW_KEY_S, CONTROL_OR_SUPER }, ShortcutManager::Category::Scene );

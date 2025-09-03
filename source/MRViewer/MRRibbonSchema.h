@@ -31,6 +31,18 @@ struct MenuItemInfo
     std::string helpLink; // link to help page
 };
 
+/// interface for plugins that should be notified when their information is loaded from the schema json file
+/// allows to alternate behavior depending on whether the plugin is available in the app
+class MRVIEWER_CLASS RibbonSchemaLoadListener
+{
+public:
+    virtual ~RibbonSchemaLoadListener() = default;
+
+protected:
+    friend class RibbonSchemaLoader;
+    virtual void onRibbonSchemaLoad_() = 0;
+};
+
 using ItemMap = HashMap<std::string, MenuItemInfo>;
 using TabsGroupsMap = HashMap<std::string, std::vector<std::string>>;
 using GroupsItemsMap = TabsGroupsMap;
@@ -94,8 +106,18 @@ public:
         float tooltipOrderWeight{ 1.f };
     };
 
-    MRVIEWER_API static std::vector<SearchResult> search( const std::string& searchStr, int* captionCount = nullptr,
-        std::vector<SearchResultWeight>* weights = nullptr );
+    /// tool search options
+    struct SearchParams
+    {
+        /// gets the number of matches in the captions
+        int* captionCount = nullptr;
+        /// returns the coefficients of matching the search string for each tool found
+        std::vector<SearchResultWeight>* weights = nullptr;
+        /// sort the results according to the launch capability (empty requirements)
+        RequirementsFunction requirementsFunc = {};
+    };
+    /// searches for tools with the most appropriate names (captions) or tooltips
+    MRVIEWER_API static std::vector<SearchResult> search( const std::string& searchStr, const SearchParams& params );
 
     /// returns item tab index in schema.tabsOrder or -1 if no tab found (e.g. scene fast access panel or header access panel)
     MRVIEWER_API static int findItemTab( const std::shared_ptr<RibbonMenuItem>& item );

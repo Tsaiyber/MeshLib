@@ -3,11 +3,16 @@
 #include "config.h"
 #ifndef MRIOEXTRAS_NO_PDF
 #include "exports.h"
-
-#include <hpdf.h>
+#include "MRMesh/MRMeshFwd.h"
+#include "MRMesh/MRVector2.h"
+#include "MRMesh/MRBox.h"
+#include "MRMesh/MRColor.h"
+#include "MRMesh/MRExpected.h"
 
 #include <filesystem>
 #include <vector>
+#include <variant>
+#include <optional>
 
 namespace MR
 {
@@ -17,8 +22,8 @@ namespace MR
  */
 struct PdfParameters
 {
-    HPDF_REAL titleSize = 18.f;
-    HPDF_REAL textSize = 14.f;
+    float titleSize = 18.f;
+    float textSize = 14.f;
     /**
      * @brief Font name
      * list of available fonts:
@@ -28,7 +33,13 @@ struct PdfParameters
      * Symbol
      * ZapfDingbats
      */
-    std::string fontName = "Helvetica";
+    std::string defaultFontName = "Helvetica";
+    std::string defaultFontBoldName = "Helvetica-Bold";
+    /**
+    * Font name for table (monospaced)
+    */
+    std::string tableFontName = "Courier";
+    std::string tableFontBoldName = "Courier-Bold";
 };
 
 /**
@@ -38,14 +49,11 @@ class Pdf
 {
 public:
     /// Ctor
-    MRIOEXTRAS_API Pdf( const std::filesystem::path& documentPath, const PdfParameters& params = PdfParameters() );
+    MRIOEXTRAS_API Pdf( const PdfParameters& params = PdfParameters() );
     MRIOEXTRAS_API Pdf( Pdf&& other ) noexcept;
     MRIOEXTRAS_API Pdf& operator=( Pdf other ) noexcept; // Sic, passing by value.
     /// Dtor. Automatically do close
     MRIOEXTRAS_API ~Pdf();
-
-    Pdf( const Pdf& rhs ) = delete;
-    Pdf& operator = ( const Pdf& rhs ) = delete;
 
     /**
      * Add text block in current cursor position.
@@ -58,48 +66,155 @@ public:
     MRIOEXTRAS_API void addText( const std::string& text, bool isTitle = false );
 
     /**
+     * Add set of pair string - value in current cursor position.
+     * Move cursor.
+     * Box horizontal size is page width without offset.
+     * Box vertical size is automatically for text.
+     */
+    MRIOEXTRAS_API void addTable( const std::vector<std::pair<std::string, float>>& table );
+
+    struct PaletteRowStats
+    {
+        Color color;
+        std::string rangeMin;
+        std::string rangeMax;
+        std::string percent;
+    };
+    MRIOEXTRAS_API void addPaletteStatsTable( const std::vector<PaletteRowStats>& paletteStats );
+
+    /// Parameters to adding image from file
+    struct ImageParams
+    {
+        /// image size in page space
+        /// if == {0, 0} - use image size
+        /// if .x or .y < 0 use the available page size from the current cursor position (caption size is also accounted for)
+        Vector2f size;
+        /// caption if not empty - add caption under marks (if exist) or image.
+        std::string caption;
+        /// set height to keep same scale as width scale
+        bool uniformScaleFromWidth = false;
+    };
+    /**
      * @brief Add image from file in current cursor position.
      * If image bigger than page size, autoscale image to page size.
      * Move cursor.
-     * @param valuesMarks if not empty - add marks under image.
-     * valuesMarks contains pairs<relative_position, marks_text>.
-     *     relative_position is in range [0., 1.], where 0. - left border of image, 1. - right border
-     * @param caption if not empty - add caption under marks (if exist) or image.
      */
-    MRIOEXTRAS_API void addImageFromFile( const std::filesystem::path& imagePath, const std::string& caption = {},
-        const std::vector<std::pair<double, std::string>>& valuesMarks = {} );
+    MRIOEXTRAS_API void addImageFromFile( const std::filesystem::path& imagePath, const ImageParams& params ); 
 
     /// Add new pageand move cursor on it
     MRIOEXTRAS_API void newPage();
 
-    /// Save and close document. After this impossible add anything in document
-    MRIOEXTRAS_API void close();
+    /// Save document to file
+    MRIOEXTRAS_API void saveToFile( const std::filesystem::path& documentPath );
 
-    void setCursorPosX( HPDF_REAL posX ) { cursorX_ = posX; };
-    void setCursorPosY( HPDF_REAL posY ) { cursorY_ = posY; };
-    float getCursorPosX() const { return cursorX_; };
-    float getCursorPosY() const { return cursorY_; };
+    void setCursorPosX( float posX ) { cursorX_ = posX; }
+    void setCursorPosY( float posY ) { cursorY_ = posY; }
+    float getCursorPosX() const { return cursorX_; }
+    float getCursorPosY() const { return cursorY_; }
+
+    MRIOEXTRAS_API Vector2f getPageSize() const;
+    MRIOEXTRAS_API Box2f getPageWorkArea() const;
 
     /// Checking the ability to work with a document
-    operator bool() const { return state_.document != 0; };
+    MRIOEXTRAS_API operator bool() const;
+    
+
+    // Table part
+    struct EmptyCell {};
+    // class to convert values to string with set format
+    struct Cell {
+        using Value = std::variant<int, float, bool, std::string, EmptyCell>;
+        Value data;
+
+        template<typename T>
+        Cell( T value ) : data( value ) {}
+
+        // get strang from contained value
+        // \param fmtStr format string like fmt::format
+        MRIOEXTRAS_API std::string toString( const std::string& fmtStr = "{}" ) const;
+    };
+
+    // set up new table (clear table customization, reset parameters to default values)
+    MRIOEXTRAS_API void newTable( int columnCount );
+    // set table column widths
+    MRIOEXTRAS_API Expected<void> setTableColumnWidths( const std::vector<float>& widths );
+    // add in pdf table row with titles
+    MRIOEXTRAS_API Expected<void> addTableTitles( const std::vector<std::string>& titles );
+    // set format for conversion values to string for each column
+    MRIOEXTRAS_API Expected<void> setColumnValuesFormat( const std::vector<std::string>& formats );
+    // add in pdf table row with values
+    MRIOEXTRAS_API Expected<void> addRow( const std::vector<Cell>& cells );
+    // return text width (for table font parameters)
+    MRIOEXTRAS_API float getTableTextWidth( const std::string& text );
+    // parameters to customization table cell
+    struct CellCustomParams
+    {
+        std::optional<Color> colorText;
+        std::optional<Color> colorCellBg;
+        std::optional<Color> colorCellBorder;
+        std::optional<std::string> text;
+    };
+    using TableCustomRule = std::function<CellCustomParams( int row, int column, const std::string& cellValueText)>;
+    // add rule to customize table cells
+    void setTableCustomRule( TableCustomRule rule ) { tableCustomRule_ = rule; }
 
 private:
-    struct State
-    {
-        HPDF_Doc document = nullptr;
-        HPDF_Page activePage = nullptr;
-        HPDF_Font activeFont = nullptr;
-    };
-    State state_;
+    struct TextParams;
+    // common method for adding different types of text
+    void addText_( const std::string& text, const TextParams& params );
 
-    std::filesystem::path filename_;
+    // draw text in specific rect on page
+    // text will be cropped by rect
+    void drawTextRect_( const std::string& text, const Box2f& rect, const TextParams& params );
+
+    // draw rect (filled with border)
+    void drawRect_( const Box2f& rect, const Color& fillColor, const Color& strokeColor );
+
+    struct TextCellParams;
+    void drawTextCell_( const std::string& text, const TextCellParams& params );
+
+
+    // close pdf document without saving. After this impossible add anything in document.
+    void reset_();
+
+    // count the number of rows with auto-transfer in mind for a given page (page, font and font size)
+    int calcTextLinesCount_( const std::string& text );
+
+    struct State;
+    std::unique_ptr<State> state_;
 
     PdfParameters params_;
 
-    HPDF_REAL cursorX_ = 0;
-    HPDF_REAL cursorY_ = 0;
+    float cursorX_ = 0;
+    float cursorY_ = 0;
 
-    bool checkDocument() const { return state_.document && state_.activePage; };
+    bool checkDocument_( const std::string& logAction ) const;
+    void moveCursorToNewLine();
+
+    // table parts
+    int rowCounter_ = 0;
+    struct ColumnInfo
+    {
+        float width = 100;
+        std::string valueFormat = "{}";
+    };
+    std::vector<ColumnInfo> columnsInfo_;
+    TableCustomRule tableCustomRule_;
+    struct TableGeneralParams
+    {
+        Color colorTitleText = Color::white();
+        Color colorTitleBg{ 42, 102, 246 };
+
+        Color colorCellText = Color::black();
+        Color colorCellBg1{ 170, 194, 251 };
+        Color colorCellBg2{ 212, 224, 253 };
+
+        Color colorLines = Color::white();
+
+        float fontSize = 12.f;
+    } tableParams_;
+
+
 };
 
 }

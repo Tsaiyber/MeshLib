@@ -306,6 +306,8 @@ std::shared_ptr<SurfacePointWidget> PickPointManager::createPickWidget_( const s
         {
             if ( auto obj = objPtr.lock() )
             {
+                if ( params.onUpdatePoints && !params.onUpdatePoints( obj ) )
+                    return;
                 auto& points = pickedPoints_[obj];
                 const auto pointCount = points.size();
                 for ( auto i = (int)pointCount - 1; i >= 0; --i )
@@ -673,10 +675,13 @@ void PickPointManager::setFullState( FullState s )
 
 PickPointManager::~PickPointManager()
 {
-    FilterHistoryByCondition( [&] ( const std::shared_ptr<HistoryAction>& action )
+    if ( params.writeHistory )
     {
-        return bool( dynamic_cast<const WidgetHistoryAction *>( action.get() ) );
-    } );
+        FilterHistoryByCondition( [&] ( const std::shared_ptr<HistoryAction>& action )
+        {
+            return bool( dynamic_cast<const WidgetHistoryAction *>( action.get() ) );
+        } );
+    }
     disconnect();
 }
 

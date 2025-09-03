@@ -15,6 +15,9 @@ on:
       need_windows_vcpkg_rebuild:
         required: true
         type: boolean
+      vcpkg_docker_image_tag:
+        required: true
+        type: string
       vs19_vcpkg_version:
         required: true
         type: string
@@ -79,12 +82,12 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: true
 
       - name: Login to DockerHub
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3
         with:
           username: meshlib
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -104,33 +107,32 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [ x64 ]
+        arch: [ x64, arm64 ]
+        os: [ rockylinux8 ] # also available: rockylinux9
         include:
           - arch: x64
-            image-suffix: ''
-            os: ubuntu-latest
+            runner: ubuntu-latest
           - arch: arm64
-            image-suffix: '-arm64'
-            os: [ self-hosted, linux-arm64, on-demand, meshinspector ]
-    runs-on: ${{ matrix.os }}
+            runner: [ self-hosted, linux-arm64, on-demand, meshinspector ]
+    runs-on: ${{ matrix.runner }}
     env:
-      image: meshlib/meshlib-vcpkg${{ matrix.image-suffix }}:${{ inputs.docker_image_tag }}
+      image: meshlib/meshlib-${{ matrix.os }}-vcpkg-${{ matrix.arch }}:${{ inputs.vcpkg_docker_image_tag }}
       vcpkg_triplet: ${{ matrix.arch }}-linux-meshlib
     steps:
       - name: Remove unused Docker data
         run: docker system prune --force --all --volumes
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Login to DockerHub
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3
         with:
           username: meshlib
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build Linux vcpkg image
-        run: docker build -f ./docker/vcpkgDockerfile -t ${{ env.image }} --build-arg VCPKG_TRIPLET=${{ env.vcpkg_triplet }} . --progress=plain
+        run: docker build -f ./docker/${{ matrix.os }}-vcpkgDockerfile -t ${{ env.image }} --build-arg VCPKG_TRIPLET=${{ env.vcpkg_triplet }} . --progress=plain
 
       - name: Push Linux vcpkg image
         run: docker push ${{ env.image }}
@@ -145,12 +147,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ windows-2022, windows-2019 ]
+        runner: [ windows-2022 ]
         include:
           - runner: windows-2022
             vcpkg-version: ${{ inputs.vs22_vcpkg_version }}
-          - runner: windows-2019
-            vcpkg-version: ${{ inputs.vs19_vcpkg_version }}
     steps:
       - name: Setup vcpkg
         working-directory: C:\vcpkg
@@ -161,7 +161,7 @@ jobs:
           vcpkg.exe integrate install
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: true
 

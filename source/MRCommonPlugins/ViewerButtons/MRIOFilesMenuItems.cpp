@@ -25,6 +25,7 @@
 #include "MRMesh/MRObjectLines.h"
 #include "MRMesh/MRObjectPoints.h"
 #include "MRMesh/MRObjectDistanceMap.h"
+#include "MRMesh/MRSceneRoot.h"
 #include "MRViewer/MRRibbonMenu.h"
 #include "MRViewer/MRViewer.h"
 #include "MRMesh/MRImageSave.h"
@@ -35,7 +36,6 @@
 #include "MRMesh/MRMeshSaveObj.h"
 #include "MRViewer/MRShowModal.h"
 #include "MRViewer/MRSaveObjects.h"
-#include "MRViewer/MRViewer.h"
 #include "MRViewer/MRViewerInstance.h"
 #include "MRViewer/MRSwapRootAction.h"
 #include "MRViewer/MRViewerEventsListener.h"
@@ -246,8 +246,20 @@ const RibbonMenuItem::DropItemsList& OpenFilesMenuItem::dropItems() const
     return dropList_;
 }
 
+void OpenFilesMenuItem::dragEntrance_( bool entered )
+{
+    dragging_ = entered;
+}
+
+bool OpenFilesMenuItem::dragOver_( int x, int y )
+{
+    dragPos_ = Vector2i( x, y );
+    return dragging_;
+}
+
 bool OpenFilesMenuItem::dragDrop_( const std::vector<std::filesystem::path>& paths )
 {
+    dragging_ = false;
     if ( paths.empty() )
         return false;
 
@@ -276,11 +288,80 @@ bool OpenFilesMenuItem::dragDrop_( const std::vector<std::filesystem::path>& pat
         auto mousePos = viewerRef.mouseController().getMousePos();
         auto headerHeight = viewerRef.framebufferSize.y - sceneBoxSize.y;
         if ( mousePos.x > sceneBoxSize.x || mousePos.y < headerHeight )
-            options.forceReplaceScene = true;
+            options.replaceMode = FileLoadOptions::ReplaceMode::ForceReplace;
+        else
+            options.replaceMode = FileLoadOptions::ReplaceMode::ForceAdd;
     }
 
-    viewerRef.loadFiles( paths, options );
-    return true;
+    if ( viewerRef.getSortDroppedFiles() )
+    {
+        auto sortedPaths = paths;
+        std::sort( sortedPaths.begin(), sortedPaths.end() );
+        return viewerRef.loadFiles( sortedPaths, options );
+    }
+    else
+        return viewerRef.loadFiles( paths, options );
+}
+
+void OpenFilesMenuItem::preDraw_()
+{
+    if ( !dragging_ )
+        return;
+
+    if ( ProgressBar::isOrdered() )
+        return;
+
+    auto* drawList = ImGui::GetForegroundDrawList();
+    if ( !drawList )
+        return;
+
+    bool addAreaHovered = false;
+
+    float scaling = 1.0f;
+    auto menu = getViewerInstance().getMenuPluginAs<RibbonMenu>();
+    if ( menu )
+    {
+        scaling = menu->menu_scaling();
+        auto sceneBoxSize = menu->getSceneSize();
+        auto headerHeight = getViewerInstance().framebufferSize.y - sceneBoxSize.y;
+        if ( dragPos_.x <= sceneBoxSize.x && dragPos_.y >= headerHeight )
+            addAreaHovered = true;
+    }
+
+    auto mainColor = ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::BackgroundSecStyle );
+    auto secondColor = ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::Background );
+
+    ImVec2 min = ImVec2( 10.0f * scaling, 10.0f * scaling );
+    ImVec2 max = ImVec2( Vector2f( getViewerInstance().framebufferSize ) );
+    max.x -= min.x;
+    max.y -= min.y;
+    drawList->AddRectFilled( min, max, 
+        ( addAreaHovered ? secondColor : mainColor ).scaledAlpha( 0.8f ).getUInt32(), 10.0f * scaling );
+    drawList->AddRect( min, max, ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::Borders ).getUInt32(), 10.0f * scaling, 0, 2.0f * scaling );
+
+    auto bigFont = RibbonFontManager::getFontByTypeStatic( RibbonFontManager::FontType::Headline );
+    if ( bigFont )
+        ImGui::PushFont( bigFont );
+
+    auto textSize = ImGui::CalcTextSize( "Load as Scene" );
+    auto textPos = ImVec2( 0.5f * ( max.x + min.x - textSize.x ), 0.5f * ( max.y + min.y - textSize.y ) );
+    drawList->AddText( textPos, ImGui::GetColorU32( ImGuiCol_Text ), "Load as Scene" );
+
+    if ( menu )
+    {
+        auto sceneBoxSize = menu->getSceneSize();
+        min.y += ( getViewerInstance().framebufferSize.y - sceneBoxSize.y );
+        max.x = sceneBoxSize.x - min.x;
+        drawList->AddRectFilled( min, max, ( addAreaHovered ? mainColor : secondColor ).scaledAlpha( 0.8f ).getUInt32(), 10.0f * scaling );
+        drawList->AddRect( min, max, ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::Borders ).getUInt32(), 10.0f * scaling, 0, 2.0f * scaling );
+
+        textSize = ImGui::CalcTextSize( "Add Files" );
+        textPos = ImVec2( 0.5f * ( max.x + min.x - textSize.x ), 0.5f * ( max.y + min.y - textSize.y ) );
+        drawList->AddText( textPos, ImGui::GetColorU32( ImGuiCol_Text ), "Add Files" );
+    }
+
+    if ( bigFont )
+        ImGui::PopFont();
 }
 
 void OpenFilesMenuItem::parseLaunchParams_()
@@ -420,6 +501,7 @@ void OpenDirectoryMenuItem::openDirectory( const std::filesystem::path& director
                     SceneRoot::get().addChild( obj );
                     getViewerInstance().viewport().preciseFitDataToScreenBorder( { 0.9f } );
                     getViewerInstance().recentFilesStore().storeFile( directory );
+                    getViewerInstance().objectsLoadedSignal( { obj }, {}, warnings );
                     if ( !warnings.empty() )
                         pushNotification( { .text = warnings, .type = NotificationType::Warning } );
                 };
@@ -716,13 +798,21 @@ void SaveSceneAsMenuItem::saveScene_( const std::filesystem::path& savePath )
     } );
 }
 
-bool SaveSceneAsMenuItem::action()
+void SaveSceneAsMenuItem::saveSceneAs_()
 {
+    std::string defFileName;
+    if ( auto obj = getDepthFirstObject( &SceneRoot::get(), ObjectSelectivityType::Selectable ) )
+        defFileName = obj->name();
     saveFileDialogAsync( [&] ( const std::filesystem::path& savePath )
     {
         if ( !savePath.empty() )
             saveScene_( savePath );
-    }, { .filters = SceneSave::getFilters() } );
+    }, { .fileName = defFileName, .filters = SceneSave::getFilters() } );
+}
+
+bool SaveSceneAsMenuItem::action()
+{
+    saveSceneAs_();
     return false;
 }
 
@@ -742,8 +832,8 @@ bool SaveSceneMenuItem::action()
 {
     auto savePath = SceneRoot::getScenePath();
     if ( savePath.empty() )
-        savePath = saveFileDialog( { .filters = SceneSave::getFilters() } );
-    if ( !savePath.empty() )
+        saveSceneAs_();
+    else
         saveScene_( savePath );
     return false;
 }

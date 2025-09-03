@@ -6,6 +6,7 @@
 #include "MRMesh/MRSystem.h"
 #include "MRMesh/MRSystemPath.h"
 #include "MRMesh/MRDirectory.h"
+#include "MRMesh/MRTimer.h"
 #include "MRPch/MRSpdlog.h"
 #include "MRPch/MRTBB.h"
 
@@ -16,13 +17,12 @@ namespace MR
 
 void RibbonIcons::load()
 {
+    MR_TIMER;
     auto& instance = instance_();
     instance.load_( IconType::RibbonItemIcon );
     instance.load_( IconType::ObjectTypeIcon );
     instance.load_( IconType::IndependentIcons );
-#ifdef _WIN32
     instance.load_( IconType::Logos );
-#endif // _WIN32
 }
 
 void RibbonIcons::free()

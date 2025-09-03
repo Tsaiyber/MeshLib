@@ -42,8 +42,9 @@ jobs:
       need_linux_image_rebuild:   ${{ needs.config.outputs.need_linux_image_rebuild == 'true' }}
       need_linux_vcpkg_rebuild:   ${{ needs.config.outputs.need_linux_vcpkg_rebuild == 'true' }}
       need_windows_vcpkg_rebuild: ${{ needs.config.outputs.need_windows_vcpkg_rebuild == 'true' }}
-      vs19_vcpkg_version:        ${{ needs.config.outputs.vs19_vcpkg_version }}
-      vs22_vcpkg_version:        ${{ needs.config.outputs.vs22_vcpkg_version }}
+      vcpkg_docker_image_tag:     ${{ needs.config.outputs.vcpkg_docker_image_tag }}
+      vs19_vcpkg_version:         ${{ needs.config.outputs.vs19_vcpkg_version }}
+      vs22_vcpkg_version:         ${{ needs.config.outputs.vs22_vcpkg_version }}
     secrets: inherit
 
   versioning-and-release-url:
@@ -138,12 +139,12 @@ jobs:
       - config
       - windows-build-test
     timeout-minutes: 60
-    runs-on: windows-2019
+    runs-on: [self-hosted, windows, x64, vs-2019, vcpkg-2024.10.21, meshinspector]
     env:
       vs19_vcpkg_version: ${{ needs.config.outputs.vs19_vcpkg_version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: true
 
@@ -166,7 +167,7 @@ jobs:
           .\thirdparty\install.bat
 
       - name: Download Windows Binaries Archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: WindowsArchive*
           merge-multiple: true
@@ -175,6 +176,7 @@ jobs:
         run: |
           tar -xvzf MREDist_Release.zip
           tar -xvzf MREDist_Debug.zip
+          tar -xvzf MeshLibC2Headers.zip
 
       - name: Make Install Folder
         run: py -3.10 scripts\make_install_folder.py ${{ needs.config.outputs.app_version }}
@@ -207,24 +209,24 @@ jobs:
     runs-on: windows-2022
     steps:
      - name: Checkout
-       uses: actions/checkout@v4
+       uses: actions/checkout@v5
 
      - name: Download NuGet Windows Patch Archive
-       uses: actions/download-artifact@v4
+       uses: actions/download-artifact@v5
        with:
          pattern: DotNetPatchArchiveWindows*
          path: windows_runtime
          merge-multiple: true
 
      - name: Download NuGet Linux Patch Archive
-       uses: actions/download-artifact@v4
+       uses: actions/download-artifact@v5
        with:
          pattern: DotNetPatchArchiveLinux*
          path: linux_runtime
          merge-multiple: true
 
      - name: Download NuGet DLL
-       uses: actions/download-artifact@v4
+       uses: actions/download-artifact@v5
        with:
          pattern: DotNetDll*
          path: dotnet_dll
@@ -264,10 +266,10 @@ jobs:
       - macos-build-test
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download All Developer Distributives
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: Distributives*
           merge-multiple: true
@@ -331,23 +333,33 @@ jobs:
     if: ${{ needs.config.outputs.test_pip_build == 'true' }}
     uses: ./.github/workflows/pip-build.yml
     with:
-      docker_image_tag: ${{ needs.config.outputs.docker_image_tag }}
+      vcpkg_docker_image_tag: ${{ needs.config.outputs.vcpkg_docker_image_tag }}
 
   collect-stats:
     timeout-minutes: 5
     runs-on: aws-micro
-    needs: [ upload-distributions ]
+    needs: [ config, upload-distributions ]
     if: ${{ always() && needs.config.outputs.internal_build == 'true' }}
     continue-on-error: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download runners' system stats
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: RunnerSysStats*
           merge-multiple: true
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        id: aws-creds
+        with:
+          aws-region: us-east-1
+          role-to-assume: ${{ secrets.AWS_CI_STAT_API_ROLE_ARN }}
+          output-credentials: true
+
+      - name: Install dependencies
+        run: python3 -m pip install boto3 botocore
 
       - name: Collect stats
         env:
@@ -402,7 +414,7 @@ jobs:
 
       # generate timing logs archive
       - name: Download Timing Logs Archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: Timing_Logs*
           merge-multiple: true
@@ -435,4 +447,10 @@ jobs:
         uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5
         with:
           name: PythonStubs
+          failOnError: false
+
+      - name: Delete C bindings headers
+        uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5
+        with:
+          name: CBindings
           failOnError: false

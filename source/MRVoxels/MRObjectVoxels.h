@@ -24,6 +24,12 @@ public:
     constexpr static const char* TypeName() noexcept { return "ObjectVoxels"; }
     virtual const char* typeName() const override { return TypeName(); }
 
+    constexpr static const char* ClassName() noexcept { return "Voxel Volume"; }
+    virtual std::string className() const override { return ClassName(); }
+
+    constexpr static const char* ClassNameInPlural() noexcept { return "Voxel Volumes"; }
+    virtual std::string classNameInPlural() const override { return ClassNameInPlural(); }
+
     MRVOXELS_API virtual void applyScale( float scaleFactor ) override;
 
     /// Returns iso surface, empty if iso value is not set
@@ -52,9 +58,6 @@ public:
     { return vdbVolume_.voxelSize; }
 
     MRVOXELS_API virtual std::vector<std::string> getInfoLines() const override;
-
-    std::string getClassName() const override { return "Voxels"; }
-    std::string getClassNameInPlural() const override { return "Voxels"; }
 
     /// Clears all internal data and then creates grid and calculates histogram (surface is not built, call \ref updateHistogramAndSurface)
     /// \param normalPlusGrad true means that iso-surface normals will be along gradient, false means opposite direction
@@ -216,9 +219,16 @@ public:
     /// nullptr means serialize in defaultSerializeVoxelsFormat()
     MRVOXELS_API void setSerializeFormat( const char * newFormat );
 
+    /// reset basic object colors to their default values from the current theme
+    MRVOXELS_API void resetFrontColor() override;
+
     /// signal about Iso-surface changes (from updateIsoSurface)
     using IsoSurfaceChangedSignal = Signal<void()>;
     IsoSurfaceChangedSignal isoSurfaceChangedSignal;
+
+    /// triggered by changes to voxels data
+    using VoxelsChangedSignal = Signal<void()>;
+    VoxelsChangedSignal voxelsChangedSignal;
 
 private:
     VolumeRenderingParams volumeRenderingParams_;

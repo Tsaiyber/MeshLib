@@ -4,6 +4,41 @@ var touchId = [-1, -1];
 var reinterpretEvent = false;
 var pointerSize = 0;
 
+var overrideKeyDown = function (event) {
+    GLFW.onKeydown(event);
+    // suppress some browser hotkeys
+    if (event.key == "F1" || event.key == "F2" || event.key == "F3" || event.key == "F4" || event.ctrlKey || event.metaKey)
+        event.preventDefault();
+}
+
+var updateKeyEvents = function () {
+    window.removeEventListener("keydown", GLFW.onKeydown, true);
+    window.addEventListener("keydown", overrideKeyDown, true);
+}
+
+var keyboardEventsArePresent = true;
+
+var removeKeyboardEvents = function () {
+    if (keyboardEventsArePresent) {
+        window.removeEventListener("keydown", overrideKeyDown, true);
+        window.removeEventListener("keypress", GLFW.onKeyPress, true);
+        window.removeEventListener("keyup", GLFW.onKeyup, true);
+        keyboardEventsArePresent = false;
+    }
+};
+
+var addKeyboardEvents = function () {
+    if (!keyboardEventsArePresent) {
+        window.addEventListener("keydown", overrideKeyDown, true);
+        window.addEventListener("keypress", GLFW.onKeyPress, true);
+        window.addEventListener("keyup", GLFW.onKeyup, true);
+        keyboardEventsArePresent = true;
+    }
+    // enforce several frames to toggle animation when popup closed
+    for (var i = 0; i < 500; i += 100)
+        setTimeout(function () { Module.ccall('emsPostEmptyEvent', 'void', ['number'], [1]); }, i);
+};
+
 var getPointerSize = function () {
     if (!pointerSize) {
         pointerSize = Module.ccall('emsGetPointerSize', 'number', [], []);
@@ -60,6 +95,7 @@ var updateEvents = function () {
     Module["canvas"].removeEventListener("mouseup", GLFW.onMouseButtonUp, true);
     Module["canvas"].removeEventListener("wheel", GLFW.onMouseWheel, true);
     Module["canvas"].removeEventListener("mousewheel", GLFW.onMouseWheel, true);
+    Module["canvas"].removeEventListener("dragover", GLFW.onDragover, true);
 
     // make own touch events callbacks
     var touchEventProcess = function (event, funcName) {
@@ -201,6 +237,15 @@ var updateEvents = function () {
         preventFunc(event)
     }
 
+    GLFW.onDragover = function (event) {
+        if (!GLFW.active)
+            return;
+        Browser.setMouseCoords(event.pageX, event.pageY);
+        Module.ccall('emsDragOver', 'void', ['number', 'number'], [Browser.mouseX, Browser.mouseY]);
+        event.preventDefault();
+        return false
+    }
+
     // add new events
     Module["canvas"].addEventListener("pointermove", GLFW.onMousemove, true);
     Module["canvas"].addEventListener("pointerdown", GLFW.onMouseButtonDown, true);
@@ -208,7 +253,18 @@ var updateEvents = function () {
     Module["canvas"].addEventListener("pointerup", GLFW.onMouseButtonUp, true);
     Module["canvas"].addEventListener("wheel", GLFW.onMouseWheel, true);
     Module["canvas"].addEventListener("mousewheel", GLFW.onMouseWheel, true);
-    addEventListener('blur', (event) => {
+    Module["canvas"].addEventListener("dragover", GLFW.onDragover, true);
+    Module["canvas"].addEventListener("dragenter", (e) => {
+        Module.ccall('emsDragEnter', 'void', [], []);
+    }, true);
+    Module["canvas"].addEventListener("dragleave", (e) => {
+        Module.ccall('emsDragLeave', 'void', [], []);
+        // enforce several frames to toggle animation on drag left
+        for (var i = 0; i < 500; i += 100)
+            setTimeout(function () { Module.ccall('emsPostEmptyEvent', 'void', ['number'], [1]); }, i);
+    }, true);
+
+    addEventListener('blur', (e) => {
         Module.ccall('emsDropEvents', 'void', [], []);
     });
     // prevent others

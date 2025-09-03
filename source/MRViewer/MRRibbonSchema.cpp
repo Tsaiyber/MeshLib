@@ -8,8 +8,10 @@
 #include "MRMesh/MRSerializer.h"
 #include "MRMesh/MRDirectory.h"
 #include "MRMesh/MRString.h"
+#include "MRMesh/MRTimer.h"
 #include "MRPch/MRSpdlog.h"
 #include "MRPch/MRJson.h"
+#include "MRSceneCache.h"
 
 namespace MR
 {
@@ -99,8 +101,7 @@ bool RibbonSchemaHolder::delItem( const std::shared_ptr<RibbonMenuItem>& item )
     return true;
 }
 
-std::vector<RibbonSchemaHolder::SearchResult> RibbonSchemaHolder::search( const std::string& searchStr, int* captionCount /*= nullptr*/,
-    std::vector<SearchResultWeight>* weights /*= nullptr*/ )
+std::vector<RibbonSchemaHolder::SearchResult> RibbonSchemaHolder::search( const std::string& searchStr, const SearchParams& params )
 {
     std::vector<std::pair<SearchResult, SearchResultWeight>> rawResult;
     
@@ -203,9 +204,7 @@ std::vector<RibbonSchemaHolder::SearchResult> RibbonSchemaHolder::search( const 
         for ( int i = 0; i < list.size(); ++i )
         {
             auto item = schema.items.find( list[i] );
-            if ( item == schema.items.end() )
-                continue;
-            if ( !item->second.item )
+            if ( item == schema.items.end() || !item->second.item )
                 continue;
             checkItem( item->second, t );
             if ( item->second.item->type() == RibbonItemType::ButtonWithDrop )
@@ -217,7 +216,7 @@ std::vector<RibbonSchemaHolder::SearchResult> RibbonSchemaHolder::search( const 
                     if ( std::dynamic_pointer_cast< LambdaRibbonItem >( dropRibItem ) )
                         continue;
                     auto dropItem = schema.items.find( dropRibItem->name() );
-                    if ( dropItem == schema.items.end() )
+                    if ( dropItem == schema.items.end() || !dropItem->second.item )
                         continue;
                     checkItem( dropItem->second, t );
                 }
@@ -245,7 +244,12 @@ std::vector<RibbonSchemaHolder::SearchResult> RibbonSchemaHolder::search( const 
     // clear duplicated results
     std::sort( rawResult.begin(), rawResult.end(), [] ( const auto& a, const auto& b )
     {
-        return intptr_t( a.first.item ) < intptr_t( b.first.item );
+        // tab order sorting has been added to stabilize results for similar queries (i.e. "c" / "cl" / "clo" / "clone", i6438 )
+        const auto ptrA = intptr_t( a.first.item );
+        const auto ptrB = intptr_t( b.first.item );
+        const auto& tabIndexA = a.first.tabIndex;
+        const auto& tabIndexB = b.first.tabIndex;
+        return ptrA < ptrB || ( ptrA == ptrB && tabIndexA < tabIndexB );
     } );
     rawResult.erase(
         std::unique( rawResult.begin(), rawResult.end(),
@@ -255,36 +259,36 @@ std::vector<RibbonSchemaHolder::SearchResult> RibbonSchemaHolder::search( const 
     } ),
         rawResult.end() );
 
-    std::sort( rawResult.begin(), rawResult.end(), [maxWeight] ( const auto& a, const auto& b )
+    std::sort( rawResult.begin(), rawResult.end(), [maxWeight, requirementsFunc = params.requirementsFunc] ( const auto& a, const auto& b )
     {
-        if ( a.second.captionWeight <= maxWeight )
+        const bool aCaptionWeightCorrect = a.second.captionWeight <= maxWeight;
+        const bool bCaptionWeightCorrect = b.second.captionWeight <= maxWeight;
+
+        // 1 sort priority
+        // the corresponding caption takes precedence over the corresponding tooltip
+        if ( aCaptionWeightCorrect != bCaptionWeightCorrect )
+            return aCaptionWeightCorrect;
+
+        if ( requirementsFunc )
         {
-            if ( b.second.captionWeight <= maxWeight )
-            {
-                if ( a.second.captionWeight < b.second.captionWeight )
-                    return true;
-                else if ( a.second.captionWeight > b.second.captionWeight )
-                    return false;
-                else
-                    return a.second.captionOrderWeight < b.second.captionOrderWeight;
-            }
-            else
-                return true;
+            const bool aAvailable = requirementsFunc( a.first.item->item ).empty();
+            const bool bAvailable = requirementsFunc( b.first.item->item ).empty();
+
+            // 2 sort priority
+            // available tool takes precedence over unavailable
+            if ( aAvailable != bAvailable )
+                return aAvailable;
         }
-        else
-        {
-            if ( b.second.captionWeight <= maxWeight )
-                return false;
-            else
-            {
-                if ( a.second.tooltipWeight < b.second.tooltipWeight )
-                    return true;
-                else if ( a.second.tooltipWeight > b.second.tooltipWeight )
-                    return false;
-                else
-                    return a.second.tooltipOrderWeight < b.second.tooltipOrderWeight;
-            }
-        }
+
+        // 3 sort priority
+        // if both have the correct caption weight, then compare by caption, otherwise compare by tooltip
+        const auto& aWeight = aCaptionWeightCorrect ? a.second.captionWeight : a.second.tooltipWeight;
+        const auto& bWeight = aCaptionWeightCorrect ? b.second.captionWeight : b.second.tooltipWeight;
+        // 4 sort priority
+        // if both have the same weight, then compare by order weight
+        const auto& aOrderWeight = aCaptionWeightCorrect ? a.second.captionOrderWeight : a.second.tooltipOrderWeight;
+        const auto& bOrderWeight = aCaptionWeightCorrect ? b.second.captionOrderWeight : b.second.tooltipOrderWeight;
+        return std::tuple( aWeight, aOrderWeight ) < std::tuple( bWeight, bOrderWeight );
     } );
 
     // filter results with error threshold as 3x minimum caption error 
@@ -302,20 +306,23 @@ std::vector<RibbonSchemaHolder::SearchResult> RibbonSchemaHolder::search( const 
     }
 
     std::vector<SearchResult> res( rawResult.size() );
-    if ( weights )
-        *weights = std::vector<SearchResultWeight>( rawResult.size() );
-    if ( captionCount )
-        *captionCount = -1;
+    if ( params.weights )
+        *params.weights = std::vector<SearchResultWeight>( rawResult.size() );
+    if ( params.captionCount )
+        *params.captionCount = -1;
     for ( int i = 0; i < rawResult.size(); ++i )
     {
         if ( !rawResult[i].first.item )
+        {
+            assert( false );
             continue;
+        }
         res[i] = rawResult[i].first;
-        if ( captionCount && rawResult[i].second.captionWeight > maxWeight &&
+        if ( params.captionCount && rawResult[i].second.captionWeight > maxWeight &&
             ( i == 0 || ( i > 0 && rawResult[i-1].second.captionWeight <= maxWeight ) ) )
-            *captionCount = i;
-        if ( weights )
-            ( *weights )[i] = rawResult[i].second;
+            *params.captionCount = i;
+        if ( params.weights )
+            ( *params.weights )[i] = rawResult[i].second;
     }
 
     return res;
@@ -351,6 +358,7 @@ int RibbonSchemaHolder::findItemTab( const std::shared_ptr<RibbonMenuItem>& item
 
 void RibbonSchemaLoader::loadSchema() const
 {
+    MR_TIMER;
     auto files = getStructureFiles_( ".items.json" );
     if ( files.empty() )
         spdlog::error( "No Ribbon Items files found" );
@@ -579,12 +587,16 @@ void RibbonSchemaLoader::readItemsJson_( const Json::Value& itemsStruct ) const
 #endif
             continue;
         }
+        auto& [_, menuItem] = *findIt;
+
         auto& itemCaption = item["Caption"];
         if ( itemCaption.isString() )
-            findIt->second.caption = itemCaption.asString();
+            menuItem.caption = itemCaption.asString();
+
         auto& itemHelpLink = item["HelpLink"];
         if ( itemHelpLink.isString() )
-            findIt->second.helpLink = itemHelpLink.asString();
+            menuItem.helpLink = itemHelpLink.asString();
+
         auto itemIcon = item["Icon"];
         if ( !itemIcon.isString() )
         {
@@ -592,7 +604,8 @@ void RibbonSchemaLoader::readItemsJson_( const Json::Value& itemsStruct ) const
             assert( false );
         }
         else
-            findIt->second.icon = itemIcon.asString();
+            menuItem.icon = itemIcon.asString();
+
         auto itemTooltip = item["Tooltip"];
         if ( !itemTooltip.isString() )
         {
@@ -600,25 +613,30 @@ void RibbonSchemaLoader::readItemsJson_( const Json::Value& itemsStruct ) const
             assert( false );
         }
         else
-            findIt->second.tooltip = itemTooltip.asString();
+            menuItem.tooltip = itemTooltip.asString();
+
         auto itemDropList = item["DropList"];
-        if ( !itemDropList.isArray() )
-            continue;
-        MenuItemsList dropList;
-        auto itemDropListSize = int( itemDropList.size() );
-        for ( int j = 0; j < itemDropListSize; ++j )
+        if ( itemDropList.isArray() && menuItem.item )
         {
-            auto dropItemName = itemDropList[j]["Name"];
-            if ( !dropItemName.isString() )
+            MenuItemsList dropList;
+            auto itemDropListSize = int( itemDropList.size() );
+            for ( int j = 0; j < itemDropListSize; ++j )
             {
-                spdlog::warn( "\"Name\" field is not valid or not present in drop list of item: \"{}\"", itemName.asString() );
-                assert( false );
-                continue;
+                auto dropItemName = itemDropList[j]["Name"];
+                if ( !dropItemName.isString() )
+                {
+                    spdlog::warn( "\"Name\" field is not valid or not present in drop list of item: \"{}\"", itemName.asString() );
+                    assert( false );
+                    continue;
+                }
+                dropList.push_back( dropItemName.asString() );
             }
-            dropList.push_back( dropItemName.asString() );
+            if ( !dropList.empty() )
+                menuItem.item->setDropItemsFromItemList( dropList );
         }
-        if ( !dropList.empty() && findIt->second.item )
-            findIt->second.item->setDropItemsFromItemList( dropList );
+
+        if ( auto loadListener = std::dynamic_pointer_cast<RibbonSchemaLoadListener>( menuItem.item ) )
+            loadListener->onRibbonSchemaLoad_();
     }
 }
 

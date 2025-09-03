@@ -1,4 +1,5 @@
 #pragma once
+#include "MRPch/MRBindingMacros.h"
 #include "MRMeshFwd.h"
 #include "MRFeatureObject.h"
 #include "MRVisualObject.h"
@@ -22,12 +23,15 @@ public:
     constexpr static const char* TypeName() noexcept { return "LineObject"; }
     virtual const char* typeName() const override { return TypeName(); }
 
+    constexpr static const char* ClassName() noexcept { return "Line"; }
+    virtual std::string className() const override { return ClassName(); }
+
+    constexpr static const char* ClassNameInPlural() noexcept { return "Lines"; }
+    virtual std::string classNameInPlural() const override { return ClassNameInPlural(); }
+
     /// \note this ctor is public only for std::make_shared used inside clone()
     LineObject( ProtectedStruct, const LineObject& obj ) : LineObject( obj )
     {}
-
-    std::string getClassName() const override { return "Line"; }
-    std::string getClassNameInPlural() const override { return "Lines"; }
 
     MRMESH_API virtual std::shared_ptr<Object> clone() const override;
     MRMESH_API virtual std::shared_ptr<Object> shallowClone() const override;
@@ -53,7 +57,7 @@ public:
     [[nodiscard]] MRMESH_API Vector3f getPointB( ViewportId id = {} ) const;
 
     [[deprecated( "This confusingly sets half-length. Use `setLength(halfLen * 2)` instead." )]]
-    void setSize( float halfLen, ViewportId id = {} )
+    MR_BIND_IGNORE void setSize( float halfLen, ViewportId id = {} )
     {
         setLength( halfLen * 2 , id );
     }

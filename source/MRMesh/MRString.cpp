@@ -4,6 +4,7 @@
 
 namespace
 {
+
 enum class PatchType : int
 {
     None = -1,
@@ -13,6 +14,7 @@ enum class PatchType : int
     Transposition,
     Count
 };
+
 struct SumPatchWeight
 {
     PatchType type{ PatchType::None };
@@ -20,7 +22,13 @@ struct SumPatchWeight
     int prevJ{ 0 };
     int w{ 0 };
 };
+
+bool isAscii( char ch )
+{
+    return (unsigned char)ch <= 127;
 }
+
+} // namespace
 
 namespace MR
 {
@@ -184,10 +192,23 @@ void replaceInplace( std::string& target, std::string_view from, std::string_vie
     target = replace( std::move( target ), from, to );
 }
 
+std::string_view trim( std::string_view str )
+{
+    return trimRight( trimLeft( str ) );
+}
+
+std::string_view trimLeft( std::string_view str )
+{
+    size_t pos = 0;
+    while ( pos < str.size() && isAscii( str[pos] ) && std::isspace( str[pos] ) )
+        ++pos;
+    return str.substr( pos );
+}
+
 std::string_view trimRight( std::string_view str )
 {
     auto l = str.size();
-    while ( l > 0 && std::isspace( str[l - 1] ) )
+    while ( l > 0 && isAscii( str[l - 1] ) && std::isspace( str[l - 1] ) )
         --l;
     return str.substr( 0, l );
 }

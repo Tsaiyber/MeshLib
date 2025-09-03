@@ -11,13 +11,18 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="MRAlignContoursToMesh.h" />
+    <ClInclude Include="MRDivRound.h" />
+    <ClInclude Include="MRFastInt128.h" />
+    <ClInclude Include="MRImageTransform.h" />
+    <ClInclude Include="MRLinesLoadSettings.h" />
+    <ClInclude Include="MRMapOrHashMap.h" />
     <ClInclude Include="MRAABBTreeBase.h" />
     <ClInclude Include="MRAABBTreeBase.hpp" />
     <ClInclude Include="MRAABBTreeMaker.hpp" />
     <ClInclude Include="MRAABBTreeObjects.h" />
     <ClInclude Include="MRAddNoise.h" />
     <ClInclude Include="MRAligningTransform.h" />
-    <ClInclude Include="MRAlphaShape.h" />
     <ClInclude Include="MRBall.h" />
     <ClInclude Include="MRBezier.h" />
     <ClInclude Include="MRChangeMeshDataAction.h" />
@@ -72,11 +77,9 @@
     <ClInclude Include="MRBuffer.h" />
     <ClInclude Include="MRChangePointCloudNormalsAction.h" />
     <ClInclude Include="MRChangeObjectFields.h" />
-    <ClInclude Include="MRChangeVoxelsAction.h" />
     <ClInclude Include="MRChangeLabelAction.h" />
     <ClInclude Include="MRChangePointCloudAction.h" />
     <ClInclude Include="MRChangePolylineAction.h" />
-    <ClInclude Include="MRChangeVoxelSelectionAction.h" />
     <ClInclude Include="MRCloseVertices.h" />
     <ClInclude Include="MRColorMapAggregator.h" />
     <ClInclude Include="MR2to3.h" />
@@ -126,7 +129,6 @@
     <ClInclude Include="MRGraph.h" />
     <ClInclude Include="MRGridSettings.h" />
     <ClInclude Include="MRGTest.h" />
-    <ClInclude Include="MRHash.h" />
     <ClInclude Include="MRHeapBytes.h" />
     <ClInclude Include="MRHistoryAction.h" />
     <ClInclude Include="MRIdentifyVertices.h" />
@@ -155,15 +157,19 @@
     <ClInclude Include="MRNormalsToPoints.h" />
     <ClInclude Include="MRObjectMeshData.h" />
     <ClInclude Include="MROffsetContours.h" />
+    <ClInclude Include="MROneMeshContours.h" />
     <ClInclude Include="MROutlierPoints.h" />
     <ClInclude Include="MRParabola.h" />
     <ClInclude Include="MRBestFitParabola.h" />
     <ClInclude Include="MRParallel.h" />
     <ClInclude Include="MRParallelMinMax.h" />
     <ClInclude Include="MRPartialChangeMeshAction.h" />
+    <ClInclude Include="MRPartMappingAdapters.h" />
+    <ClInclude Include="MRPly.h" />
     <ClInclude Include="MRPointCloudDistance.h" />
     <ClInclude Include="MRPointCloudDivideWithPlane.h" />
     <ClInclude Include="MRClosestWeightedPoint.h" />
+    <ClInclude Include="MRPointCloudPart.h" />
     <ClInclude Include="MRPointOnObject.h" />
     <ClInclude Include="MROverlappingTris.h" />
     <ClInclude Include="MRObjectGcode.h" />
@@ -228,6 +234,7 @@
     <ClInclude Include="MRProgressReadWrite.h" />
     <ClInclude Include="MRRadiusCompensation.h" />
     <ClInclude Include="MRRayBoxIntersection2.h" />
+    <ClInclude Include="MRResizeNoInit.h" />
     <ClInclude Include="MRRigidScaleXf3.h" />
     <ClInclude Include="MRRigidXf3.h" />
     <ClInclude Include="MRSaveSettings.h" />
@@ -235,6 +242,7 @@
     <ClInclude Include="MRSeparationPoint.h" />
     <ClInclude Include="MRSharedThreadSafeOwner.h" />
     <ClInclude Include="MRSolarRadiation.h" />
+    <ClInclude Include="MRSparsePolynomial.h" />
     <ClInclude Include="MRSphere.h" />
     <ClInclude Include="MRStacktrace.h" />
     <ClInclude Include="MRSurfaceLineOffset.h" />
@@ -258,6 +266,7 @@
     <ClInclude Include="MRTerrainTriangulation.h" />
     <ClInclude Include="MRTimeRecord.h" />
     <ClInclude Include="MRTriMesh.h" />
+    <ClInclude Include="MRTripleFaceIntersections.h" />
     <ClInclude Include="MRTunnelDetector.h" />
     <ClInclude Include="MRMeshDirMax.h" />
     <ClInclude Include="MRMeshIntersect.h" />
@@ -337,13 +346,13 @@
     <ClInclude Include="MRTriMath.h" />
     <ClInclude Include="MRTriPoint.h" />
     <ClInclude Include="MRUnionFind.h" />
+    <ClInclude Include="MRUnionFindParallel.h" />
     <ClInclude Include="MRUniquePtr.h" />
     <ClInclude Include="MRUniteManyMeshes.h" />
     <ClInclude Include="MRUnorientedTriangle.h" />
     <ClInclude Include="MRUVSphere.h" />
     <ClInclude Include="MRVector2.h" />
     <ClInclude Include="MRVertCoordsDiff.h" />
-    <ClInclude Include="MRVertexAttributeGradient.h" />
     <ClInclude Include="MRViewportId.h" />
     <ClInclude Include="MRViewportProperty.h" />
     <ClInclude Include="MRVolumeIndexer.h" />
@@ -417,19 +426,28 @@
     <ClInclude Include="MRScopedValue.h" />
     <ClInclude Include="MRChunkIterator.h" />
     <ClInclude Include="MRTbbThreadMutex.h" />
+    <ClInclude Include="MRInplaceStack.h" />
+    <ClInclude Include="MROffsetVerts.h" />
+    <ClInclude Include="MREndMill.h" />
+    <ClInclude Include="MRSolidOfRevolution.h" />
+    <ClInclude Include="MRObjectTagEventDispatcher.h" />
+    <ClInclude Include="MRObjectComparableWithReference.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="MRAlignContoursToMesh.cpp" />
     <ClCompile Include="MRDirMax.cpp" />
     <ClCompile Include="MRDirMaxBruteForce.cpp" />
     <ClCompile Include="MREdgeLengthMesh.cpp" />
+    <ClCompile Include="MREnums.cpp" />
+    <ClCompile Include="MRImageTransform.cpp" />
     <ClCompile Include="MRMeshMath.cpp" />
     <ClCompile Include="MRMeshOrPointsObject.cpp" />
     <ClCompile Include="MRMeshDoubleLayer.cpp" />
     <ClCompile Include="MRObjectMeshData.cpp" />
+    <ClCompile Include="MROneMeshContours.cpp" />
     <ClCompile Include="MROutlierPoints.cpp" />
     <ClCompile Include="MRParallelProgressReporter.cpp" />
     <ClCompile Include="MR2DContoursTriangulation.cpp" />
-    <ClCompile Include="MRAABBTreeMaker.cpp" />
     <ClCompile Include="miniply.cpp" />
     <ClCompile Include="MRAABBTree.cpp" />
     <ClCompile Include="MRAABBTreeObjects.cpp" />
@@ -440,7 +458,6 @@
     <ClCompile Include="MRAddNoise.cpp" />
     <ClCompile Include="MRAffineXf2.cpp" />
     <ClCompile Include="MRAggregateFlow.cpp" />
-    <ClCompile Include="MRAlphaShape.cpp" />
     <ClCompile Include="MRArrow.cpp" />
     <ClCompile Include="MRBasinVolume.cpp" />
     <ClCompile Include="MRBestFitParabola.cpp" />
@@ -542,6 +559,8 @@
     <ClCompile Include="MROffsetContours.cpp" />
     <ClCompile Include="MROverlappingTris.cpp" />
     <ClCompile Include="MRObjectGcode.cpp" />
+    <ClCompile Include="MRPartMappingAdapters.cpp" />
+    <ClCompile Include="MRPly.cpp" />
     <ClCompile Include="MRPointCloudDistance.cpp" />
     <ClCompile Include="MRClosestWeightedPoint.cpp" />
     <ClCompile Include="MRPointOnObject.cpp" />
@@ -644,7 +663,6 @@
     <ClCompile Include="MRSurfacePath.cpp" />
     <ClCompile Include="MRTriDist.cpp" />
     <ClCompile Include="MRVertCoordsDiff.cpp" />
-    <ClCompile Include="MRVertexAttributeGradient.cpp" />
     <ClCompile Include="MRViewportId.cpp" />
     <ClCompile Include="MRVolumeIndexer.cpp" />
     <ClCompile Include="MRObjectLines.cpp" />
@@ -697,6 +715,12 @@
     <ClCompile Include="MRWasmHelpers.cpp" />
     <ClCompile Include="MRChunkIterator.cpp" />
     <ClCompile Include="MRTbbThreadMutex.cpp" />
+    <ClCompile Include="MROffsetVerts.cpp" />
+    <ClCompile Include="MRTripleFaceIntersections.cpp" />
+    <ClCompile Include="MREndMill.cpp" />
+    <ClCompile Include="MRCylinderApproximator.cpp" />
+    <ClCompile Include="MRSolidOfRevolution.cpp" />
+    <ClCompile Include="MRObjectTagEventDispatcher.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MRPch\MRPch.vcxproj">

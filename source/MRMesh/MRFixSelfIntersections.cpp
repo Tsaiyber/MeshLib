@@ -1,16 +1,17 @@
 #include "MRFixSelfIntersections.h"
-#include "MRMesh/MRMesh.h"
-#include "MRMesh/MRMeshCollide.h"
-#include "MRMesh/MRExpandShrink.h"
-#include "MRMesh/MRRegionBoundary.h"
-#include "MRMesh/MRMeshFillHole.h"
-#include "MRMesh/MRMeshFixer.h"
-#include "MRMesh/MRMeshRelax.h"
-#include "MRMesh/MRMeshComponents.h"
-#include "MRMesh/MRMeshSubdivide.h"
+#include "MRMesh.h"
+#include "MRMeshCollide.h"
+#include "MRExpandShrink.h"
+#include "MRRegionBoundary.h"
+#include "MRMeshFillHole.h"
+#include "MRMeshFixer.h"
+#include "MRMeshRelax.h"
+#include "MRMeshComponents.h"
+#include "MRMeshSubdivide.h"
+#include "MRTimer.h"
+#include "MRBox.h"
+#include "MRMapOrHashMap.h"
 #include "MRPch/MRSpdlog.h"
-#include "MRMesh/MRTimer.h"
-#include "MRMesh/MRBox.h"
 #include <algorithm>
 
 namespace MR
@@ -115,8 +116,13 @@ Expected<void> fix( Mesh& mesh, const Settings& settings )
     {
         FixMeshDegeneraciesParams fdParams;
         fdParams.maxDeviation = mesh.getBoundingBox().diagonal() * 1e-4f;
-        fdParams.tinyEdgeLength = fdParams.tinyEdgeLength * 0.1f;
-        fdParams.mode = FixMeshDegeneraciesParams::Mode::Remesh;
+        fdParams.tinyEdgeLength = fdParams.maxDeviation * 0.1f;
+
+        // do not subdivide if it is explicitly forbidden by user
+        fdParams.mode = FixMeshDegeneraciesParams::Mode::Decimate;
+        if ( settings.subdivideEdgeLen < FLT_MAX )
+            fdParams.mode = FixMeshDegeneraciesParams::Mode::Remesh;
+
         fdParams.cb = subprogress( settings.callback, 0.0f, 0.2f );
         auto fdRes = fixMeshDegeneracies( mesh, fdParams );
         if ( !fdRes.has_value() )
@@ -230,17 +236,22 @@ Expected<void> fix( Mesh& mesh, const Settings& settings )
 // Helper function to find own self-intersections on a mesh part
 static Expected<FaceBitSet> findSelfCollidingTrianglesBSForPart( Mesh& mesh, const FaceBitSet& part, ProgressCallback cb, bool touchIsIntersection )
 {
-    FaceMap tgt2srcFaceMap;
+    FaceMapOrHashMap tgt2srcFaces;
     PartMapping mapping;
-    mapping.tgt2srcFaceMap = &tgt2srcFaceMap;
+    mapping.tgt2srcFaces = &tgt2srcFaces;
     Mesh partMesh = mesh.cloneRegion( part, false, mapping );
     // Faster than searching in mesh part due to AABB tree rebuild
     auto res = findSelfCollidingTrianglesBS( { partMesh }, cb, nullptr, touchIsIntersection );
     if ( !res.has_value() )
         return unexpected( res.error() );
     FaceBitSet result( mesh.topology.lastValidFace() + 1 );
-    for ( FaceId f : *res )
-        result.set( tgt2srcFaceMap[f] );
+    if ( auto map = tgt2srcFaces.getMap() )
+    {
+        for ( FaceId f : *res )
+            result.set( (*map)[f] );
+    }
+    else
+        assert( false );
     return result;
 }
 

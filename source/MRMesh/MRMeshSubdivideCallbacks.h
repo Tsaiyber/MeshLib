@@ -6,13 +6,13 @@
 namespace MR
 {
 // callback that is called each time edge (e) is split into (e1->e), but before the ring is made Delone
-// (i.e. in subdivideMesh) and changes moved vertex attribute to correct value. 
+// (i.e. in subdivideMesh) and changes moved vertex attribute to correct value.
 // Useful to update vertices based attributes like uv coordinates or verts colormaps
 template <typename T>
 auto onEdgeSplitVertAttribute( const Mesh& mesh, Vector<T, VertId>& data );
 
 // callback that is called each time edge (e) is split into (e1->e), but before the ring is made Delone
-// (i.e. in subdivideMesh) and changes moved vertex attribute to correct value. 
+// (i.e. in subdivideMesh) and changes moved vertex attribute to correct value.
 // Useful to update face based attributes like texturePerFace or face colors
 template <typename T>
 auto onEdgeSplitFaceAttribute( const Mesh& mesh, Vector<T, FaceId>& data );
@@ -42,7 +42,7 @@ auto onEdgeSplitVertAttribute( const Mesh& mesh, Vector<T, VertId>& data )
         const auto org = mesh.topology.org( e1 );
         const auto dest = mesh.topology.dest( e );
         if ( org < data.size() && dest < data.size() )
-            data.push_back( ( data[org] + data[dest] ) * 0.5f );
+            data.push_back( data[org] * 0.5f + data[dest] * 0.5f ); // important to multiply each of ends individually not to lose data for clamped integer values (like colors)
     };
 
     return onEdgeSplit;

@@ -22,6 +22,7 @@
 #include "MRMeshSave.h"
 #include "MRObjectMesh.h"
 #include "MRObjectSave.h"
+#include "MRIOParsing.h"
 #include "MRPch/MRSpdlog.h"
 #include "MRPch/MRJson.h"
 
@@ -30,16 +31,61 @@
 namespace MR
 {
 
-Expected<Json::Value> deserializeJsonValue( const std::string& str )
+Expected<std::string> serializeJsonValue( const Json::Value& root )
 {
+    std::ostringstream oss;
+    return serializeJsonValue( root, oss )
+        .transform( [&] { return std::move( oss ).str(); } );
+}
+
+Expected<void> serializeJsonValue( const Json::Value& root, std::ostream& out )
+{
+    Json::StreamWriterBuilder builder;
+    // see json/writer.h for available configurations
+    std::unique_ptr<Json::StreamWriter> writer { builder.newStreamWriter() };
+
+    if ( !out || writer->write( root, &out ) != 0 )
+        // TODO: get an error string from the writer
+        return unexpected( "Failed to write JSON" );
+
+    return {};
+}
+
+Expected<void> serializeJsonValue( const Json::Value& root, const std::filesystem::path& path )
+{
+    // although json is a textual format, we open the file in binary mode to get exactly the same result on Windows and Linux
+    std::ofstream out( path, std::ofstream::binary );
+    return serializeJsonValue( root, out );
+}
+
+Expected<Json::Value> deserializeJsonValue( const char* data, size_t size )
+{
+    Timer t( "deserializeJsonValue( const std::string& )" );
+
     Json::Value root;
     Json::CharReaderBuilder readerBuilder;
     std::unique_ptr<Json::CharReader> reader{ readerBuilder.newCharReader() };
     std::string error;
-    if ( !reader->parse( str.data(), str.data() + str.size(), &root, &error ) )
+    if ( !reader->parse( data, data + size, &root, &error ) )
         return unexpected( "Cannot parse json file: " + error );
 
     return root;
+}
+
+Expected<Json::Value> deserializeJsonValue( const std::string& str )
+{
+    return deserializeJsonValue( str.data(), str.size() );
+}
+
+Expected<Json::Value> deserializeJsonValue( std::istream& in )
+{
+    Timer t( "deserializeJsonValue( std::istream& )" );
+
+    auto maybeStr = readString( in );
+    if ( !maybeStr )
+        return unexpected( "Json " + maybeStr.error() );
+
+    return deserializeJsonValue( *maybeStr );
 }
 
 Expected<Json::Value> deserializeJsonValue( const std::filesystem::path& path )
@@ -47,22 +93,11 @@ Expected<Json::Value> deserializeJsonValue( const std::filesystem::path& path )
     if ( path.empty() )
         return unexpected( "Cannot find parameters file" );
 
-    std::ifstream ifs( path );
+    std::ifstream ifs( path, std::ifstream::binary );
     if ( !ifs || ifs.bad() )
         return unexpected( "Cannot open json file " + utf8string( path ) );
 
     return addFileNameInError( deserializeJsonValue( ifs ), path );
-}
-
-Expected<Json::Value> deserializeJsonValue( std::istream& in )
-{
-    std::string str( ( std::istreambuf_iterator<char>( in ) ),
-                     std::istreambuf_iterator<char>() );
-
-    if ( !in || in.bad() )
-        return unexpected( "Cannot read json file" );
-
-    return deserializeJsonValue( str );
 }
 
 void serializeToJson( const Vector2i& vec, Json::Value& root )
@@ -161,6 +196,7 @@ void serializeToJson( const BitSet& bitset, Json::Value& root )
 
 void serializeToJson( const MeshTexture& texture, Json::Value& root )
 {
+    Timer t( "serializeToJson( const MeshTexture& )" );
     switch ( texture.filter )
     {
     case FilterType::Linear:
@@ -453,6 +489,7 @@ void deserializeFromJson( const Json::Value& root, BitSet& bitset )
 
 void deserializeFromJson( const Json::Value& root, MeshTexture& texture )
 {
+    Timer t( "deserializeFromJson( MeshTexture& )" );
     if ( root["FilterType"].isString() )
     {
         auto filterName = root["FilterType"].asString();

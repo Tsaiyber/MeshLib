@@ -5,7 +5,6 @@
 #include "MRVoxelsVolume.h"
 #include "MRMesh/MRVolumeIndexer.h"
 #include "MRMesh/MRBitSetParallelFor.h"
-#include "MRMesh/MRHash.h"
 #include "MRMesh/MRExpected.h"
 #include "MRMesh/MRBox.h"
 #include "MRPch/MRSpdlog.h"
@@ -300,7 +299,7 @@ void VoxelGraphCut::resize( const VoxelBitSet & sourceSeeds, const VoxelBitSet &
     assert( size_ == sinkSeeds.size() );
     assert( sourceSeeds.any() );
     assert( sinkSeeds.any() );
-    assert( ( sourceSeeds & sinkSeeds ).count() == 0 );
+    assert( !sourceSeeds.intersects( sinkSeeds ) );
     BitSetParallelForAll( sourceSeeds_, [&]( SeqVoxelId s )
     {
         auto v = seq2voxel_[s];

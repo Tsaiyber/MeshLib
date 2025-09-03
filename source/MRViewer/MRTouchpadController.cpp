@@ -88,10 +88,7 @@ bool TouchpadController::touchpadSwipeGestureBegin_()
 
     if ( currentSwipeMode_ == TouchpadParameters::SwipeMode::SwipeRotatesCamera )
     {
-        const auto initParams = viewer.viewport().getParameters();
-        viewport.rotationCenterMode( Viewport::Parameters::RotationCenterMode::DynamicStatic );
         viewport.setRotation( true );
-        viewport.rotationCenterMode( initParams.rotationMode );
     }
 
     return true;
@@ -176,10 +173,7 @@ bool TouchpadController::touchpadSwipeGestureEnd_()
 bool TouchpadController::touchpadZoomGestureBegin_()
 {
     auto& viewer = getViewerInstance();
-
     initZoomParams_ = viewer.viewport().getParameters();
-
-    viewer.mouseController().setMouseScroll( true );
 
     return true;
 }
@@ -211,10 +205,6 @@ bool TouchpadController::touchpadZoomGestureUpdate_( float scale, bool kinetic )
 
 bool TouchpadController::touchpadZoomGestureEnd_()
 {
-    auto& viewer = getViewerInstance();
-
-    viewer.mouseController().setMouseScroll( false );
-
     return true;
 }
 

@@ -69,6 +69,9 @@ protected:
   // May be different from the hipdi scaling!
   float pixel_ratio_;
 
+  // user defined additional scaling modifier
+  float userScaling_ = 1.0f;
+
   // ImGui Context
   ImGuiContext * context_ = nullptr;
   // last focused plugin window
@@ -151,6 +154,22 @@ protected:
   // When editing feature properties, this is the original xf of the target object, for history purposes.
   AffineXf3f editedFeatureObjectOldXf_;
 
+    // state for the Edit Tag modal dialog
+    struct TagEditorState
+    {
+        std::string initName;
+        std::string name;
+        bool initHasFrontColor = false;
+        bool hasFrontColor = false;
+        ImVec4 selectedColor;
+        ImVec4 unselectedColor;
+    };
+    TagEditorState tagEditorState_;
+    // whether to open the Edit Tag modal dialog
+    bool showEditTag_ = false;
+    // buffer string for the tag name input widget
+    std::string tagNewName_;
+
 public:
   MRVIEWER_API static const std::shared_ptr<ImGuiMenu>& instance();
 
@@ -192,8 +211,6 @@ public:
 
   void draw_labels_window();
 
-  void draw_labels( const VisualObject& obj );
-
   MRVIEWER_API void draw_text(
       const Viewport& viewport,
       const Vector3f& pos,
@@ -207,6 +224,11 @@ public:
   MRVIEWER_API float hidpi_scaling();
 
   MRVIEWER_API float menu_scaling() const;
+
+  // returns UI scaling modifier specified by user
+  float getUserScaling() const { return userScaling_; }
+  // sets UI scaling modifier specified by user
+  MRVIEWER_API void setUserScaling( float scaling );
 
   MRVIEWER_API ImGuiContext* getCurrentContext() const;
 
@@ -321,6 +343,24 @@ public:
     MRVIEWER_API bool drawRemoveButton( const std::vector<std::shared_ptr<Object>>& selectedObjs );
     MRVIEWER_API bool drawDrawOptionsCheckboxes( const std::vector<std::shared_ptr<VisualObject>>& selectedObjs, SelectedTypesMask selectedMask );
     MRVIEWER_API bool drawDrawOptionsColors( const std::vector<std::shared_ptr<VisualObject>>& selectedObjs );
+
+    /// style constants used for the information panel
+    struct SelectionInformationStyle
+    {
+        /// value text color
+        Color textColor;
+        /// property label color
+        Color labelColor;
+        /// selected value text color
+        Color selectedTextColor;
+        /// value item width
+        float itemWidth {};
+        /// value item width for two-segment field
+        float item2Width {};
+        /// value item width for three-segment field
+        float item3Width {};
+    };
+
 protected:
     MRVIEWER_API virtual void drawModalMessage_();
 
@@ -362,8 +402,12 @@ protected:
     MRVIEWER_API float drawSelectionInformation_();
     MRVIEWER_API void drawFeaturePropertiesEditor_( const std::shared_ptr<Object>& object );
 
+    /// draw additional selection information (e.g. for custom objects)
+    MRVIEWER_API virtual void drawCustomSelectionInformation_( const std::vector<std::shared_ptr<Object>>& selected, const SelectionInformationStyle& style );
 
     MRVIEWER_API virtual void draw_custom_selection_properties( const std::vector<std::shared_ptr<Object>>& selected );
+
+    MRVIEWER_API void drawTagInformation_( const std::vector<std::shared_ptr<Object>>& selected, const SelectionInformationStyle& style );
 
     MRVIEWER_API float drawTransform_();
 
