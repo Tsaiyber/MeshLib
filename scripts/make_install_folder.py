@@ -30,7 +30,7 @@ def vcpkg_dir():
 			vcpkg_exe_dir = "C:\\vcpkg"
 		else:
 			vcpkg_exe_dir = os.path.dirname( vcpkg_exe_dir )
-	return os.path.join(os.path.join(vcpkg_exe_dir, "installed"),"x64-windows-meshlib")
+	return os.path.join(os.path.join(vcpkg_exe_dir, "installed"),"x64-windows")
 
 
 vcpkg_directory = vcpkg_dir()

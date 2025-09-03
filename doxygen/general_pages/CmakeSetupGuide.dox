@@ -19,7 +19,7 @@ To enable support in Visual Studio, ensure the **CMake component** is installed 
 For easier setup and dependency management, we recommend using \b vcpkg as outlined in our \ref MeshLibCppSetupGuide "C++ Setup Guide". You can configure your build with the following command:
 
 \code
-cmake -DCMAKE_TOOLCHAIN_FILE=C:\path\to\vcpkg\scripts\buildsystems\vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-meshlib
+cmake -DCMAKE_TOOLCHAIN_FILE=C:\path\to\vcpkg\scripts\buildsystems\vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows
 \endcode
 
 ## Quick Integration Guide

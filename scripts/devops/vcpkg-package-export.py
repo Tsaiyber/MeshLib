@@ -17,7 +17,7 @@ with open(REQUIREMTS_PATH) as fin:
     for line in fin.readlines():
         line = line.strip()
         if line:
-            VCPKG_CMD += line + ":x64-windows-meshlib "
+            VCPKG_CMD += line + ":x64-windows "
 
 VCPKG_CMD += " --nuget"
 
