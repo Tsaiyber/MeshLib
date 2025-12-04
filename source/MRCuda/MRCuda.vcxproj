@@ -41,9 +41,6 @@
   </ImportGroup>
   <Import Project="$(ProjectDir)\..\common.props" />
   <PropertyGroup Label="UserMacros" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LinkIncremental>true</LinkIncremental>
-  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
@@ -90,6 +87,7 @@
     <CudaCompile Include="MRCudaPointsToDistanceVolume.cu" />
     <CudaCompile Include="MRCudaPointsToMeshProjector.cu" />
     <CudaCompile Include="MRCudaSolarRadiation.cu" />
+    <CudaCompile Include="MRCudaSweptVolume.cu" />
     <CudaCompile Include="MRCudaTest.cu" />
     <CudaCompile Include="MRCudaContoursDistanceMap.cu" />
     <CudaCompile Include="MRCudaPointsProject.cu" />
@@ -114,6 +112,8 @@
     <ClInclude Include="MRCudaPolylineProject.cuh" />
     <ClInclude Include="MRCudaSolarRadiation.cuh" />
     <ClInclude Include="MRCudaSolarRadiation.h" />
+    <ClInclude Include="MRCudaSweptVolume.cuh" />
+    <ClInclude Include="MRCudaSweptVolume.h" />
     <ClInclude Include="MRCudaTest.cuh" />
     <ClInclude Include="MRCudaTest.h" />
     <ClInclude Include="MRCudaContoursDistanceMap.h" />
@@ -139,6 +139,7 @@
     <ClCompile Include="MRCudaPointsToDistanceVolume.cpp" />
     <ClCompile Include="MRCudaPointsToMeshProjector.cpp" />
     <ClCompile Include="MRCudaSolarRadiation.cpp" />
+    <ClCompile Include="MRCudaSweptVolume.cpp" />
     <ClCompile Include="MRCudaTest.cpp" />
     <ClCompile Include="MRCudaMath.cpp" />
     <ClCompile Include="MRCudaPointCloud.cpp" />

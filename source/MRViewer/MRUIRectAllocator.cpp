@@ -3,6 +3,7 @@
 #include "MRViewer/MRViewer.h"
 #include "MRViewer/MRViewport.h"
 #include "MRViewer/MRImGuiVectorOperators.h"
+#include "MRViewer/MRImGuiMultiViewport.h"
 
 #include <imgui_internal.h>
 
@@ -157,18 +158,50 @@ void WindowRectAllocator::setFreeNextWindowPos( const char* expectedWindowName, 
 
     if ( findLocation )
     {
-        // push into application window if it is out
-        const Vector2f appWindowSize = Vector2f( getViewerInstance().framebufferSize );
         auto windowBox = Box2f::fromMinAndSize( defaultPos, window->Size );
-        defaultPos.x = std::clamp( windowBox.min.x, 0.0f, std::max( 0.0f, windowBox.min.x - ( windowBox.max.x - appWindowSize.x ) ) );
-        defaultPos.y = std::clamp( windowBox.min.y, 0.0f, std::max( 0.0f, windowBox.min.y - ( windowBox.max.y - appWindowSize.y ) ) );
+        Box2f boundsFixed;
+
+        Box2f workBox;
+
+        if ( ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable )
+        {
+            const auto& monitors = ImGui::GetPlatformIO().Monitors;
+            for ( const auto& m : monitors )
+            {
+                Box2f mBox = Box2f::fromMinAndSize( m.WorkPos, m.WorkSize );
+                if ( mBox.intersects( windowBox ) ) // alternative way: calculate window area in current monitor
+                {
+                    workBox = mBox;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            const Vector2f appWindowSize = Vector2f( getViewerInstance().framebufferSize );
+            workBox = Box2f::fromMinAndSize( ImGuiMV::GetMainViewportShift(), appWindowSize );
+        }
+        defaultPos.x = std::clamp( windowBox.min.x, workBox.min.x, std::max( 0.0f, workBox.max.x - windowBox.size().x ) );
+        defaultPos.y = std::clamp( windowBox.min.y, workBox.min.y, std::max( 0.0f, workBox.max.y - windowBox.size().y ) );
         windowBox = Box2f::fromMinAndSize( defaultPos, window->Size );
 
 
-        Box2f viewportBounds = getViewerInstance().getViewportsBounds();
-        Box2f boundsFixed = viewportBounds;
-        boundsFixed.min.y = ImGui::GetIO().DisplaySize.y - boundsFixed.max.y;
-        boundsFixed.max.y = boundsFixed.min.y + viewportBounds.size().y;
+        if ( ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable )
+        {
+            boundsFixed = workBox;
+        }
+        else
+        {
+            // convert viewport bounds from local to window space
+            Box2f viewportBounds = getViewerInstance().getViewportsBounds();
+            boundsFixed = viewportBounds;
+            boundsFixed.min.y = ImGui::GetIO().DisplaySize.y - boundsFixed.max.y;
+            boundsFixed.max.y = boundsFixed.min.y + viewportBounds.size().y;
+            // convert viewport bounds from window to screen space
+            boundsFixed.min = ImGuiMV::Window2ScreenSpaceVector2f( boundsFixed.min );
+            boundsFixed.max = ImGuiMV::Window2ScreenSpaceVector2f( boundsFixed.max );
+        }
+        // push into application window if it is out
 
         auto result = findFreeRect( windowBox, boundsFixed, [&]( Box2f rect, std::function<void( const char*, Box2f )> func )
         {
@@ -191,6 +224,8 @@ void WindowRectAllocator::setFreeNextWindowPos( const char* expectedWindowName, 
                     continue; // Ignore ImGui tooltips.
                 if ( std::strcmp( win->Name, expectedWindowName ) == 0 )
                     continue; // Skip the target window itself.
+                if ( auto iter = windows_.find( win->Name ); iter != windows_.end() && iter->second.state_ == AllocationState::Requested )
+                    continue; // Skip half-baked windows that already exist, but didn't have their position properly selected yet.
                 func( win->Name, Box2f::fromMinAndSize( win->Pos, win->Size ) );
             }
         }, ImVec2( 5, 1 ) );

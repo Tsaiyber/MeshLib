@@ -4,7 +4,6 @@
 #include "MRMesh/MRObjectLines.h"
 #include "MRMesh/MRObjectMesh.h"
 #include "MRMesh/MRObjectPoints.h"
-#include "MRMesh/MRSceneColors.h"
 #include "MRViewer/MRRenderDefaultObjects.h"
 #include "MRViewer/MRRenderDimensions.h"
 #include "MRViewer/MRRenderLinesObject.h"
@@ -228,7 +227,6 @@ public:
     MRVIEWER_API RenderPointFeatureObject( const VisualObject& object );
 
     MRVIEWER_API ImGuiMeasurementIndicators::Text getObjectNameText( const VisualObject& object, ViewportId viewportId ) const override;
-    MRVIEWER_API ImGuiMeasurementIndicators::Text getObjectNameExtraText( const VisualObject& object, ViewportId viewportId ) const override;
 };
 
 class RenderLineFeatureObject : public RenderObjectCombinator<RenderDefaultUiObject, RenderFeatureLinesComponent<true>, RenderResetDirtyComponent>

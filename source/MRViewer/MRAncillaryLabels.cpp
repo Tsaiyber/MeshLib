@@ -125,7 +125,6 @@ void AncillaryImGuiLabel::preDraw_()
         return;
     if ( !overrideParams_ )
         params.colorTextOutline.a = 220;
-    auto scaling = menu->menu_scaling();
     const ImGuiMeasurementIndicators::Text sWithI( labelData_.text );
 
     for ( const auto& vp : getViewerInstance().viewport_list )
@@ -143,8 +142,8 @@ void AncillaryImGuiLabel::preDraw_()
         auto viewerCoord = getViewerInstance().viewportToScreen( coord, vp.id );
 
         params.list->PushClipRect( minRect, maxRect );
-        ImGuiMeasurementIndicators::text( ImGuiMeasurementIndicators::Element::both, scaling, params,
-            ImVec2( viewerCoord.x, viewerCoord.y ), sWithI, {}, pivot_ );
+        ImGuiMeasurementIndicators::text( ImGuiMeasurementIndicators::Element::both, params,
+            ImVec2( viewerCoord.x, viewerCoord.y ), sWithI, {}, {}, pivot_ );
         params.list->PopClipRect();
     }
 }

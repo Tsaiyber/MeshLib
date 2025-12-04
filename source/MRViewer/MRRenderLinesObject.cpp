@@ -10,10 +10,12 @@
 #include "MRMesh/MRTimer.h"
 #include "MRMesh/MRPolyline.h"
 #include "MRMesh/MRPlane3.h"
-#include "MRMesh/MRMatrix4.h"
 #include "MRMesh/MRBitSetParallelFor.h"
 #include "MRMesh/MRParallelFor.h"
 #include "MRMesh/MRVector2.h"
+#include "MRViewport.h"
+#include "MRMesh/MR2to3.h"
+
 
 namespace MR
 {
@@ -33,8 +35,9 @@ RenderLinesObject::~RenderLinesObject()
 
 bool RenderLinesObject::render( const ModelRenderParams& renderParams )
 {
+    bool depthTest = objLines_->getVisualizeProperty( VisualizeMaskType::DepthTest, renderParams.viewportId );
     RenderModelPassMask desiredPass =
-        !objLines_->getVisualizeProperty( VisualizeMaskType::DepthTest, renderParams.viewportId ) ? RenderModelPassMask::NoDepthTest :
+        !depthTest ? RenderModelPassMask::NoDepthTest :
         ( objLines_->getGlobalAlpha( renderParams.viewportId ) < 255 || objLines_->getFrontColor( objLines_->isSelected(), renderParams.viewportId ).a < 255 ) ? RenderModelPassMask::Transparent :
         RenderModelPassMask::Opaque;
     if ( !bool( renderParams.passMask & desiredPass ) )
@@ -46,28 +49,23 @@ bool RenderLinesObject::render( const ModelRenderParams& renderParams )
         return false;
     }
 
+    objectPreRenderSetup( renderParams.transparencyMode,desiredPass, depthTest );
+
+    needUpdateScreenLengths_ = needAccumLengthDirtyUpdate_( renderParams );
+
     update_();
 
     // Initialize uniform
     GL_EXEC( glViewport( ( GLsizei )renderParams.viewport.x, ( GLsizei )renderParams.viewport.y,
         ( GLsizei )renderParams.viewport.z, ( GLsizei )renderParams.viewport.w ) );
 
-    if ( objLines_->getVisualizeProperty( VisualizeMaskType::DepthTest, renderParams.viewportId ) )
-    {
-        GL_EXEC( glEnable( GL_DEPTH_TEST ) );
-    }
-    else
-    {
-        GL_EXEC( glDisable( GL_DEPTH_TEST ) );
-    }
 
-    GL_EXEC( glEnable( GL_BLEND ) );
-    GL_EXEC( glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA ) );
-
-    render_( renderParams, false );
+    render_( renderParams, false, desiredPass );
     if ( objLines_->getVisualizeProperty( LinesVisualizePropertyType::Points, renderParams.viewportId ) ||
         objLines_->getVisualizeProperty( LinesVisualizePropertyType::Smooth, renderParams.viewportId ) )
-        render_( renderParams, true );
+        render_( renderParams, true, desiredPass );
+
+    objectPostRenderSetup( renderParams.transparencyMode, desiredPass, depthTest );
 
     return true;
 }
@@ -100,6 +98,7 @@ size_t RenderLinesObject::glBytes() const
     return
         positionsTex_.size()
         + vertColorsTex_.size()
+        + accumScreenLengthTex_.size()
         + lineColorsTex_.size();
 }
 
@@ -110,11 +109,28 @@ void RenderLinesObject::forceBindAll()
     bindLines_( GLStaticHolder::LinesJoint );
 }
 
-void RenderLinesObject::render_( const ModelRenderParams& renderParams, bool points )
+void RenderLinesObject::render_( const ModelRenderParams& renderParams, bool points, RenderModelPassMask desiredPass )
 {
-    auto shaderType = points ? GLStaticHolder::LinesJoint : GLStaticHolder::Lines;
+    auto shaderType = GLStaticHolder::LinesJoint;
+    if ( !points )
+    {
+        shaderType = GLStaticHolder::Lines;
+        if ( desiredPass == RenderModelPassMask::Transparent )
+        {
+            if ( renderParams.transparencyMode.isAlphaSortEnabled() )
+                shaderType = GLStaticHolder::AlphaSortLines;
+            else if ( renderParams.transparencyMode.isDepthPeelingEnabled() )
+                shaderType = GLStaticHolder::DepthPeelLines;
+        }
+    }
     bindLines_( shaderType );
+
     auto shader = GLStaticHolder::getShaderId( shaderType );
+    if ( shaderType == GLStaticHolder::DepthPeelLines )
+        bindDepthPeelingTextures( shader, renderParams.transparencyMode, GL_TEXTURE4 );
+
+
+    calcAndBindLength_( renderParams, shader );
 
     GL_EXEC( glUniformMatrix4fv( glGetUniformLocation( shader, "model" ), 1, GL_TRUE, renderParams.modelMatrix.data() ) );
     GL_EXEC( glUniformMatrix4fv( glGetUniformLocation( shader, "view" ), 1, GL_TRUE, renderParams.viewMatrix.data() ) );
@@ -130,6 +146,8 @@ void RenderLinesObject::render_( const ModelRenderParams& renderParams, bool poi
 
     GL_EXEC( glUniform1i( glGetUniformLocation( shader, "perVertColoring" ), objLines_->getColoringType() == ColoringType::VertsColorMap ) );
     GL_EXEC( glUniform1i( glGetUniformLocation( shader, "perLineColoring" ), objLines_->getColoringType() == ColoringType::LinesColorMap ) );
+    GL_EXEC( glUniform1i( glGetUniformLocation( shader, "dashed" ), objLines_->getVisualizeProperty( LinesVisualizePropertyType::Dashed, renderParams.viewportId ) ) );
+    GL_EXEC( glUniform1iv( glGetUniformLocation( shader, "dashPattern" ), 1, ( const int* )&objLines_->getDashPattern( renderParams.viewportId ) ) );
 
     GL_EXEC( glUniform1i( glGetUniformLocation( shader, "useClippingPlane" ), objLines_->globalClippedByPlane( renderParams.viewportId ) ) );
     GL_EXEC( glUniform4f( glGetUniformLocation( shader, "clippingPlane" ),
@@ -273,6 +291,65 @@ void RenderLinesObject::bindPositions_( GLuint shaderId )
     GL_EXEC( glUniform1i( glGetUniformLocation( shaderId, "vertices" ), 0 ) );
 }
 
+void RenderLinesObject::calcAndBindLength_( const ModelRenderParams& params, GLuint shaderId )
+{
+    GL_EXEC( glActiveTexture( GL_TEXTURE3 ) );
+    if ( objLines_->getVisualizeProperty( LinesVisualizePropertyType::Dashed, params.viewportId ) && needUpdateScreenLengths_ )
+    {
+        int maxTexSize = 0;
+        GL_EXEC( glGetIntegerv( GL_MAX_TEXTURE_SIZE, &maxTexSize ) );
+        assert( maxTexSize > 0 );
+        RenderBufferRef<float> accumScreenLength;
+        Vector2i res;
+        if ( objLines_->polyline() )
+        {
+            const auto& polyline = objLines_->polyline();
+            const auto& topology = polyline->topology;
+            auto lastValid = topology.lastNotLoneEdge();
+            auto numL = lastValid.valid() ? lastValid.undirected() + 1 : 0;
+
+            auto& glBuffer = GLStaticHolder::getStaticGLBuffer();
+            res = calcTextureRes( int( 2 * numL ), maxTexSize );
+            accumScreenLength = glBuffer.prepareBuffer<float>( res.x * res.y );
+            std::fill( accumScreenLength.data(), accumScreenLength.data() + accumScreenLength.size(), 0.0f );
+            lineIndicesSize_ = numL;
+            auto validVerts = topology.getValidVerts();
+            while ( validVerts.any() )
+            {
+                auto oid = validVerts.find_first();
+                auto e = topology.edgeWithOrg( oid );
+                for ( ;; )
+                {
+                    validVerts.reset( oid );
+                    auto did = topology.dest( e );
+                    auto o = getViewerInstance().viewport( params.viewportId ).projectToViewportSpace( params.modelMatrix( polyline->points[oid] ) );
+                    auto d = getViewerInstance().viewport( params.viewportId ).projectToViewportSpace( params.modelMatrix( polyline->points[did] ) );
+                    accumScreenLength[e] = accumScreenLength[topology.next( e )];
+                    accumScreenLength[e.sym()] = accumScreenLength[e] + MR::distance( to2dim( o ), to2dim( d ) );
+                    if ( !validVerts.test( did ) )
+                        break;
+                    auto nextE = topology.next( e.sym() );
+                    if ( nextE == e.sym() )
+                        break;
+                    e = nextE;
+                    oid = topology.org( e );
+                }
+            }
+        }
+        accumScreenLengthTex_.loadData(
+            { .resolution = GlTexture2::ToResolution( res ), .internalFormat = GL_R32F, .format = GL_RED, .type = GL_FLOAT },
+            accumScreenLength );
+        resetAccumLengthDirty_( params );
+    }
+    else
+    {
+        if ( !accumScreenLengthTex_.valid() )
+            accumScreenLengthTex_.gen();
+        accumScreenLengthTex_.bind();
+    }
+    GL_EXEC( glUniform1i( glGetUniformLocation( shaderId, "accumScnLength" ), 3 ) );
+}
+
 void RenderLinesObject::bindLines_( GLStaticHolder::ShaderType shaderType )
 {
     MR_TIMER;
@@ -377,6 +454,30 @@ void RenderLinesObject::update_()
 {
     dirty_ |= objLines_->getDirtyFlags();
     objLines_->resetDirty();
+}
+
+bool RenderLinesObject::needAccumLengthDirtyUpdate_( const ModelRenderParams& params )
+{
+    if ( dirty_ & ( DIRTY_POSITION | DIRTY_FACE ) )
+        return true;
+    if ( params.viewMatrix != prevView_ )
+        return true;
+    if ( params.projMatrix != prevProj_ )
+        return true;
+    if ( params.modelMatrix != prevModel_ )
+        return true;
+    if ( params.viewport != prevViewport_ )
+        return true;
+    return false;
+}
+
+void RenderLinesObject::resetAccumLengthDirty_( const ModelRenderParams& params )
+{
+    prevModel_ = params.modelMatrix;
+    prevView_ = params.viewMatrix;
+    prevProj_ = params.projMatrix;
+    prevViewport_ = params.viewport;
+    needUpdateScreenLengths_ = false;
 }
 
 const Vector2f& GetAvailableLineWidthRange()

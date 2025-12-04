@@ -15,11 +15,14 @@
 #include "MRMeshDelone.h"
 #include "MRPly.h"
 #include "MRParallelFor.h"
+#include "MRImageLoad.h"
 #include "MRPch/MRFmt.h"
 #include "MRPch/MRTBB.h"
 
 #include <array>
+#include <bit>
 #include <future>
+#include <sstream>
 
 namespace MR
 {
@@ -291,16 +294,7 @@ Expected<Mesh> fromOff( std::istream& in, const MeshLoadSettings& settings /*= {
     return res;
 }
 
-Expected<Mesh> fromObj( const std::filesystem::path & file, const MeshLoadSettings& settings /*= {}*/ )
-{
-    std::ifstream in( file, std::ios::binary );
-    if ( !in )
-        return unexpected( std::string( "Cannot open file for reading " ) + utf8string( file ) );
-
-    return addFileNameInError( fromObj( in, settings ), file );
-}
-
-Expected<Mesh> fromObj( std::istream& in, const MeshLoadSettings& settings /*= {}*/ )
+static Expected<Mesh> fromObj( std::istream& in, const MeshLoadSettings& settings, const std::filesystem::path& dir )
 {
     MR_TIMER;
 
@@ -310,7 +304,7 @@ Expected<Mesh> fromObj( std::istream& in, const MeshLoadSettings& settings /*= {
         .countSkippedFaces = settings.skippedFaceCount != nullptr,
         .callback = settings.callback
     };
-    auto objs = fromSceneObjFile( in, true, {}, objLoadSettings );
+    auto objs = fromSceneObjFile( in, true, dir, objLoadSettings );
     if ( !objs.has_value() )
         return unexpected( objs.error() );
     if ( objs->empty() )
@@ -323,9 +317,42 @@ Expected<Mesh> fromObj( std::istream& in, const MeshLoadSettings& settings /*= {
         *settings.skippedFaceCount = r.skippedFaceCount;
     if ( settings.duplicatedVertexCount )
         *settings.duplicatedVertexCount = r.duplicatedVertexCount;
+    if ( settings.uvCoords )
+        *settings.uvCoords = std::move( r.uvCoords );
+    if ( settings.texture && !r.textureFiles.empty() ) // if there is at least one texture
+    {
+        // only load one texture from MeshLoad version of obj opening for now
+        auto image = ImageLoad::fromAnySupportedFormat( r.textureFiles.front() );
+        if ( image.has_value() )
+        {
+            settings.texture->resolution = std::move( image->resolution );
+            settings.texture->pixels = std::move( image->pixels );
+            settings.texture->filter = FilterType::Linear;
+            settings.texture->wrap = WrapType::Clamp;
+        }
+        else
+        {
+            // Cannot read texture, but do not fail at least to open geometry
+            // this could be valid branch for WASM
+        }
+    }
     if ( settings.xf )
         *settings.xf = r.xf;
     return std::move( r.mesh );
+}
+
+Expected<Mesh> fromObj( const std::filesystem::path & file, const MeshLoadSettings& settings /*= {}*/ )
+{
+    std::ifstream in( file, std::ios::binary );
+    if ( !in )
+        return unexpected( std::string( "Cannot open file for reading " ) + utf8string( file ) );
+
+    return addFileNameInError( fromObj( in, settings, file.parent_path() ), file );
+}
+
+Expected<Mesh> fromObj( std::istream& in, const MeshLoadSettings& settings /*= {}*/ )
+{
+    return fromObj( in, settings, std::filesystem::path{} );
 }
 
 Expected<MR::Mesh> fromAnyStl( const std::filesystem::path& file, const MeshLoadSettings& settings /*= {}*/ )
@@ -379,15 +406,17 @@ Expected<Mesh> fromBinaryStl( std::istream& in, const MeshLoadSettings& settings
     MeshBuilder::VertexIdentifier vi;
     vi.reserve( numTris );
 
-    #pragma pack(push, 1)
+    using Pos3f = std::array<char, 12>;
     struct StlTriangle
     {
-        Vector3f normal;
-        Vector3f vert[3];
-        std::uint16_t attr;
+        Pos3f normal;
+        Pos3f coords[3];
+        char attrs[2];
+        // floats in Vector3f must be 4-bytes aligned on some platforms, so we use chars and cast them in Vector3f on access
+        Vector3f vertex( int i ) const { return std::bit_cast<Vector3f>( coords[i] ); }
     };
-    #pragma pack(pop)
-    static_assert( sizeof( StlTriangle ) == 50, "check your padding" );
+    static_assert( sizeof( StlTriangle ) == 50 );
+    static_assert( alignof( StlTriangle ) <= 2 );
 
     const auto itemsInBuffer = std::min( numTris, 32768u );
     std::vector<StlTriangle> buffer( itemsInBuffer ), nextBuffer( itemsInBuffer );
@@ -411,7 +440,7 @@ Expected<Mesh> fromBinaryStl( std::istream& in, const MeshLoadSettings& settings
             chunk.resize( buffer.size() );
             for ( int i = 0; i < buffer.size(); ++i )
                 for ( int j = 0; j < 3; ++j )
-                    chunk[i][j] = buffer[i].vert[j];
+                    chunk[i][j] = buffer[i].vertex( j );
             vi.addTriangles( chunk );
         } );
 
@@ -548,16 +577,7 @@ Expected<Mesh> fromASCIIStl( std::istream& in, const MeshLoadSettings& settings 
     return res;
 }
 
-Expected<Mesh> fromPly( const std::filesystem::path& file, const MeshLoadSettings& settings /*= {}*/ )
-{
-    std::ifstream in( file, std::ifstream::binary );
-    if ( !in )
-        return unexpected( std::string( "Cannot open file for reading " ) + utf8string( file ) );
-
-    return addFileNameInError( fromPly( in, settings ), file );
-}
-
-Expected<Mesh> fromPly( std::istream& in, const MeshLoadSettings& settings /*= {}*/ )
+static Expected<Mesh> fromPly( std::istream& in, const MeshLoadSettings& settings, const std::filesystem::path& dir )
 {
     MR_TIMER;
 
@@ -567,9 +587,11 @@ Expected<Mesh> fromPly( std::istream& in, const MeshLoadSettings& settings /*= {
         .tris = &tris,
         .edges = settings.edges,
         .colors = settings.colors,
+        .faceColors = settings.faceColors,
         .uvCoords = settings.uvCoords,
         .normals = settings.normals,
         .texture = settings.texture,
+        .dir = dir,
         // suppose that reading is 10% of progress and building mesh is 90% of progress
         .callback = subprogress( settings.callback, 0.0f, 0.1f )
     };
@@ -595,6 +617,20 @@ Expected<Mesh> fromPly( std::istream& in, const MeshLoadSettings& settings /*= {
     if ( !reportProgress( settings.callback, 1.0f ) )
         return unexpectedOperationCanceled();
     return res;
+}
+
+Expected<Mesh> fromPly( const std::filesystem::path& file, const MeshLoadSettings& settings /*= {}*/ )
+{
+    std::ifstream in( file, std::ifstream::binary );
+    if ( !in )
+        return unexpected( std::string( "Cannot open file for reading " ) + utf8string( file ) );
+
+    return addFileNameInError( fromPly( in, settings, file.parent_path() ), file );
+}
+
+Expected<Mesh> fromPly( std::istream& in, const MeshLoadSettings& settings )
+{
+    return fromPly( in, settings, std::filesystem::path{} );
 }
 
 Expected<Mesh> fromDxf( const std::filesystem::path& path, const MeshLoadSettings& settings /*= {}*/ )

@@ -1,7 +1,6 @@
 #pragma once
 #include "MRMeshFwd.h"
 #include "MRColor.h"
-#include "MRVector4.h"
 
 #include <array>
 
@@ -40,6 +39,9 @@ struct SceneColors
         UnselectedFeatureDecorations,
         SelectedMeasurements,
         UnselectedMeasurements,
+        UnselectedMeasurementsX,
+        UnselectedMeasurementsY,
+        UnselectedMeasurementsZ,
         SelectedTemporaryMeasurements,
         UnselectedTemporaryMeasurements,
         Count [[maybe_unused]],

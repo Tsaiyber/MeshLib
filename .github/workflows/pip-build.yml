@@ -33,7 +33,7 @@ on:
         type: boolean
 
 env:
-  VCPKG-VERSION: '2025.04.09'
+  VCPKG-VERSION: '2025.10.17'
   CUDA-VERSION: '12.0.1.52833'
   CUDA-MAJOR: '12'
   CUDA-MINOR: '0'
@@ -47,7 +47,7 @@ jobs:
       version_tag: ${{ steps.get-latest-tag.outputs.tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
         # Disabling this with an `if:` results in `steps.get-latest-tag.outputs.tag` being empty.
         # Passing that to `ref:` makes it default to the current commit, which is exactly what we need.
@@ -75,7 +75,7 @@ jobs:
           - platform: "aarch64"
             os: rockylinux8-vcpkg-arm64
             container-options: " " # empty
-            runner: [ self-hosted, linux-arm64, on-demand, meshinspector ]
+            runner: ubuntu-24.04-arm
             compiler: /usr/bin/clang++
 
     steps:
@@ -90,7 +90,7 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{needs.setup.outputs.version_tag}}
 
@@ -135,7 +135,7 @@ jobs:
 
       # install helper utility for Python version management
       - name: Install uv
-        uses: astral-sh/setup-uv@4959332f0f014c5280e7eac8b70c90cb574c9f9b # v6
+        uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244
 
       - name: Build Python shim libs
         run: |
@@ -154,7 +154,7 @@ jobs:
           done
 
       - name: Run Tests
-        run: MR_LOCAL_RESOURCES=1 xvfb-run -a ./build/Release/bin/MeshViewer -hidden -noEventLoop -unloadPluginsAtEnd
+        run: xvfb-run -a ./build/Release/bin/MeshViewer -hidden -noEventLoop -unloadPluginsAtEnd
 
       - name: Unit Tests
         run: build/Release/bin/MRTest
@@ -186,7 +186,7 @@ jobs:
 
       - name: Upload Python Stubs
         if: ${{ (github.event_name == 'release' || inputs.publish) && matrix.platform == 'aarch64' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: PythonStubs
           path: ./scripts/wheel/meshlib/meshlib/*.pyi
@@ -194,20 +194,22 @@ jobs:
 
       - name: Generate C bindings
         if: ${{ (github.event_name == 'release' || inputs.publish) && matrix.platform == 'aarch64' }}
-        env:
-          CXX: /usr/bin/clang++
-        run: make -f scripts/mrbind/generate.mk TARGET=c -B --trace
+        run: |
+          make -f scripts/mrbind/generate.mk TARGET=c -B --trace \
+            CXX_FOR_ABI=${{ matrix.compiler }} \
+            CXX_FOR_BINDINGS=${{ matrix.compiler }} \
+            DEPS_BASE_DIR=${VCPKG_ROOT}/installed/${VCPKG_TRIPLET}
 
       - name: Upload C bindings headers
         if: ${{ (github.event_name == 'release' || inputs.publish) && matrix.platform == 'aarch64' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: CBindings
           path: ./source/MeshLibC2/include
           retention-days: 1
 
       - name: Upload to Test Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ManyLinux-${{matrix.platform}}
           path: ./scripts/wheel/meshlib/wheelhouse/meshlib-*.whl
@@ -227,7 +229,7 @@ jobs:
   windows-pip-build:
     needs: setup
     timeout-minutes: 90
-    runs-on:  [windows-2022]
+    runs-on:  [windows-2025]
     strategy:
       fail-fast: false
     permissions:
@@ -235,7 +237,7 @@ jobs:
       contents: read  # This is required for actions/checkout
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: recursive
           ref: ${{needs.setup.outputs.version_tag}}
@@ -262,7 +264,7 @@ jobs:
             C:\vcpkg\*
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4
+        uses: aws-actions/configure-aws-credentials@8e2d02296bcf12c081e192c60f3cb80d77f4f76a # v4
         with:
           role-to-assume: arn:aws:iam::259351611210:role/GitHubMeshLibAwsCredsRole
           aws-region: us-east-1
@@ -311,7 +313,7 @@ jobs:
         # Install MSYS2 using their github action instead of ours `install_deps_windows_msys2.bat`. Locally users should use that bat file.
         # I'm expecting the official action to be better suited for CI needs (e.g. they promise some form of caching in the readme), but I didn't perform a proper comparison.
       - name: Install MSYS2 for MRBind
-        uses: msys2/setup-msys2@61f9e5e925871ba6c9e3e8da24ede83ea27fa91f # v2
+        uses: msys2/setup-msys2@fb197b72ce45fb24f17bf3f807a388985654d1f2 # v2
         with:
           msystem: clang64
           install: make gawk procps-ng mingw-w64-clang-x86_64-cmake
@@ -357,7 +359,7 @@ jobs:
           python .\scripts\wheel\build_wheel.py --plat-name=win-amd64 --version ${{needs.setup.outputs.version_tag || '0'}}
 
       - name: Upload to Test Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Windows
           path: wheelhouse\meshlib-*.whl
@@ -365,7 +367,7 @@ jobs:
 
   macos-pip-build:
     needs: setup
-    timeout-minutes: 80
+    timeout-minutes: 120
     runs-on: ${{ matrix.instance }}
     strategy:
       fail-fast: false
@@ -373,17 +375,16 @@ jobs:
         platform: ["x86", "arm64"]
         include:
           - platform: "x86"
-            # On 12.0 x86 `brew` doesn't have binary packages for Clang.
-            plat-name: macosx_13_0_x86_64
-            instance: macos-13
+            plat-name: macosx_12_0_x86_64
+            instance: macos-15-intel
             brewpath: /usr/local
           - platform: "arm64"
             plat-name: macosx_12_0_arm64
-            instance: [ self-hosted, macos-12, arm64, build ]
+            instance: macos-14
             brewpath: /opt/homebrew
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: recursive
           ref: ${{needs.setup.outputs.version_tag}}
@@ -441,7 +442,7 @@ jobs:
           python3 ./scripts/wheel/build_wheel.py --plat-name=${{matrix.plat-name}} --version ${{needs.setup.outputs.version_tag || '0'}}
 
       - name: Upload to Test Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Macos-${{matrix.platform}}
           path: meshlib-*.whl
@@ -458,14 +459,14 @@ jobs:
       fail-fast: false
       matrix:
         platform: ["x86_64", "aarch64"]
-        py-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+        py-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
         include:
           - platform: "x86_64"
             runner: ubuntu-latest
             container-options: "--user root"
             container-prefix: " "
           - platform: "aarch64"
-            runner: [ self-hosted, linux-arm64, on-demand, meshinspector ]
+            runner: ubuntu-24.04-arm
             container-options: " " # empty
             container-prefix: "arm64v8/"
           - py-version: "3.8"
@@ -480,11 +481,14 @@ jobs:
             os: "fedora:39"
           - py-version: "3.13"
             os: "fedora:42"
+          # TODO: replace with a distro with default Python 3.14
+          - py-version: "3.14"
+            os: "ubuntu:25.10"
     env:
       PYTHON_CMD: python${{ matrix.py-version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{needs.setup.outputs.version_tag}}
 
@@ -493,12 +497,19 @@ jobs:
         run: dnf -y install python38-pip
 
       - name: Debian/Ubuntu system setup
-        if: ${{ matrix.os == 'debian:11-slim' || matrix.os == 'ubuntu:22.04' }}
-        run: apt -y update && apt -y install curl libssl-dev python3-pip
+        if: ${{ matrix.os == 'debian:11-slim' || matrix.os == 'ubuntu:22.04' || matrix.os == 'ubuntu:25.10' }}
+        run: apt -y update && apt -y install curl libssl-dev python3-pip python${{ matrix.py-version }}-venv
 
       - name: Fedora system setup
         if: ${{ matrix.os == 'fedora:37' || matrix.os == 'fedora:39' || matrix.os == 'fedora:42' }}
         run: dnf -y install python3-pip
+
+      - name: Create virtualenv
+        run: |
+          ${{ env.PYTHON_CMD }} -m venv .venv
+          . .venv/bin/activate
+          echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> $GITHUB_ENV
+          echo $PATH >> $GITHUB_PATH
 
       - name: Pip setup
         run: |
@@ -508,7 +519,7 @@ jobs:
           ${{ env.PYTHON_CMD }} -m pip install pytest
 
       - name: Download Meshlib wheel from Artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: ManyLinux-${{matrix.platform}}
           merge-multiple: true
@@ -527,21 +538,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        py-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+        py-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{needs.setup.outputs.version_tag}}
 
       - name: Download Meshlib wheel from Artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: Windows
           merge-multiple: true
 
       - name: Python setup
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.py-version }}
 
@@ -562,26 +573,20 @@ jobs:
 
   macos-pip-test:
     needs: [macos-pip-build]
-    timeout-minutes: 20
+    timeout-minutes: 40
     runs-on: ${{ matrix.instance }}
     strategy:
       fail-fast: false
       matrix:
         platform: ["arm64", "x86"]
-        py-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
-        exclude: # python 3.8 disabled on x86 macOS since 2024-10-14
-          - platform: "x86"
-            py-version: "3.8"
+        py-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"] # python 3.8 disabled on macOS since 2024-10-14
         include:
           - platform: "x86"
-            # On 12.0 x86 `brew` doesn't have binary packages for Clang.
-            plat-name: macosx_13_0_x86_64
-            instance: macos-13
+            plat-name: macosx_12_0_x86_64
+            instance: macos-15-intel
           - platform: "arm64"
             plat-name: macosx_12_0_arm64
-            instance: [ self-hosted, macos-12, arm64, build ]
-          - py-version: "3.8"
-            py-cmd: "python3.8"
+            instance: macos-14
           - py-version: "3.9"
             py-cmd: "python3.9"
           - py-version: "3.10"
@@ -592,15 +597,17 @@ jobs:
             py-cmd: "python3.12"
           - py-version: "3.13"
             py-cmd: "python3.13"
+          - py-version: "3.14"
+            py-cmd: "python3.14"
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{needs.setup.outputs.version_tag}}
 
       - name: Python setup
-        if: ${{ !(matrix.platform == 'x86' && ( matrix.py-version == '3.11' || matrix.py-version == '3.12' || matrix.py-version == '3.13' ) ) }}
-        run: brew install python@${{matrix.py-version}}
+        if: ${{ !(matrix.platform == 'x86' && matrix.py-version == '3.11') }}
+        run: brew install --overwrite python@${{matrix.py-version}}
 
       - name: Create virtualenv
         run: |
@@ -620,7 +627,7 @@ jobs:
           ${{ matrix.py-cmd }} -m pip install pytest
 
       - name: Download Meshlib wheel from Artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: Macos-${{matrix.platform}}
           merge-multiple: true
@@ -635,23 +642,25 @@ jobs:
   upload-to-release:
     if: ${{ github.event_name == 'release' || inputs.publish }}
     needs: [manylinux-pip-test, windows-pip-test, macos-pip-test]
+    outputs:
+      uploaded: ${{ steps.check_upload.outputs.uploaded }}
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - name: Download Wheels Artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           pattern: ManyLinux-*
           merge-multiple: true
 
       - name: Download Wheels Artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           pattern: Windows
           merge-multiple: true
 
       - name: Download Wheels Artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           pattern: Macos-*
           merge-multiple: true
@@ -661,6 +670,10 @@ jobs:
 
       - name: Upload to Production PyPi
         run: twine upload ./meshlib-*.whl -u __token__ -p ${{ secrets.PYPI_MESHINSPECTOR_TOKEN }} --skip-existing
+
+      - name: Mark Success
+        id: check_upload
+        run: echo "uploaded=true" >> $GITHUB_OUTPUT
 
   post-release-test:
     if: ${{ github.event_name == 'release' || inputs.publish }}
@@ -674,6 +687,7 @@ jobs:
     if: always()
     steps:
       - name: Delete all ManyLinux
+        if: ${{ !(github.event_name == 'release' || inputs.publish) || needs.upload-to-release.outputs.uploaded == 'true' }}
         uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5
         with:
           name: ManyLinux-*
@@ -695,12 +709,14 @@ jobs:
 
 
       - name: Delete all Windows
+        if: ${{ !(github.event_name == 'release' || inputs.publish) || needs.upload-to-release.outputs.uploaded == 'true' }}
         uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5
         with:
           name: Windows
           failOnError: false
 
       - name: Delete all Macos
+        if: ${{ !(github.event_name == 'release' || inputs.publish) || needs.upload-to-release.outputs.uploaded == 'true' }}
         uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5
         with:
           name: Macos-*

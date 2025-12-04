@@ -12,8 +12,8 @@
 #include "MRMesh/MRVector2.h"
 #include "MRMesh/MRColor.h"
 #include "MRViewer/MRViewerFwd.h"
-#include "MRViewer/MRUnits.h"
 #include "MRViewer/MRImGui.h"
+#include "MRViewer/MRImGuiVectorOperators.h"
 #include <misc/cpp/imgui_stdlib.h>
 #include <algorithm>
 #include <functional>
@@ -23,6 +23,8 @@
 #include <vector>
 #include <optional>
 
+struct ImGuiWindow;
+
 // Extend ImGui by populating its namespace directly
 //
 // Code snippets taken from there:
@@ -30,12 +32,15 @@
 namespace ImGui
 {
 
-static auto vector_getter = [](void* vec, int idx, const char** out_text)
+static auto vector_getter = [] ( void* vec, int idx ) -> const char*
 {
-  auto& vector = *static_cast<std::vector<std::string>*>(vec);
-  if (idx < 0 || idx >= static_cast<int>(vector.size())) { return false; }
-  *out_text = vector.at(idx).c_str();
-  return true;
+    auto& vector = *static_cast< std::vector<std::string>* >( vec );
+    if ( idx < 0 || idx >= static_cast< int >( vector.size() ) )
+    {
+        assert( false && "Combo: vector_getter invalid index" );
+        return "";
+    }
+    return vector.at( idx ).c_str();
 };
 
 inline bool Combo(const char* label, int* idx, const std::vector<std::string>& values)
@@ -47,11 +52,17 @@ inline bool Combo(const char* label, int* idx, const std::vector<std::string>& v
 
 inline bool Combo(const char* label, int* idx, std::function<const char *(int)> getter, int items_count)
 {
-  auto func = [](void* data, int i, const char** out_text) {
+  auto func = [](void* data, int i) -> const char*
+  {
     auto &getter = *reinterpret_cast<std::function<const char *(int)> *>(data);
     const char *s = getter(i);
-    if (s) { *out_text = s; return true; }
-    else { return false; }
+    if ( s )
+        return s;
+    else
+    {
+        assert( false && "Combo: getter return nullptr" );
+        return "";
+    }
   };
   return Combo(label, idx, func, reinterpret_cast<void *>(&getter), items_count);
 }
@@ -177,7 +188,7 @@ struct CustomStatePluginWindowParameters
     /// current collapsed state of window
     /// in/out parameter, owned outside of `BeginCustomStatePlugin` function
     bool* collapsed{ nullptr };
-    /// window width (should be already scaled with menuScaling)
+    /// window width (should be already scaled with `UI::scale()`)
     float width{ 0.0f };
     /// window height, usually calculated internally (if value is zero)
     float height{ 0.0f };
@@ -187,8 +198,6 @@ struct CustomStatePluginWindowParameters
     ImVec2* position{ nullptr };
     /// the position of the starting point of the window
     ImVec2 pivot{ 0.0f, 0.0f };
-    /// menu scaling, needed to proper scaling of internal window parts
-    float menuScaling{ 1.0f };
     /// window flags, ImGuiWindowFlags_NoScrollbar and ImGuiWindow_NoScrollingWithMouse are forced inside `BeginCustomStatePlugin` function
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize;
     /// outside owned parameter for windows with resize option
@@ -206,7 +215,7 @@ struct CustomStatePluginWindowParameters
 MRVIEWER_API ImVec2 GetDownPosition( const float width );
 
 /// Calculate and return the height of the window title
-MRVIEWER_API float GetTitleBarHeght( float menuScaling );
+MRVIEWER_API float GetTitleBarHeght();
 
 /// Load saved window position, if possible
 /// \details if can't load - get \p position (if setted) or default (upper-right viewport corner)
@@ -216,18 +225,13 @@ MRVIEWER_API float GetTitleBarHeght( float menuScaling );
 /// \param position (optional) preliminary window position
 /// \return pair of the final position of the window and flag whether the position was loaded
 MRVIEWER_API std::pair<ImVec2, bool> LoadSavedWindowPos( const char* label, ImGuiWindow* window, float width, const ImVec2* position = nullptr );
-inline std::pair<ImVec2, bool> LoadSavedWindowPos( const char* label, float width, const ImVec2* position = nullptr )
-{
-    return LoadSavedWindowPos( label, FindWindowByName( label ), width, position );
-}
+MRVIEWER_API std::pair<ImVec2, bool> LoadSavedWindowPos( const char* label, float width, const ImVec2* position = nullptr );
+
 /// Save window position
 /// \details saved only if window exist
 /// see also \ref LoadSavedWindowPos
 MRVIEWER_API void SaveWindowPosition( const char* label, ImGuiWindow* window );
-inline void SaveWindowPosition( const char* label )
-{
-    SaveWindowPosition( label, FindWindowByName( label ) );
-}
+MRVIEWER_API void SaveWindowPosition( const char* label );
 
 /// Parameters drawing classic ImGui::Begin with loading / saving window position
 struct SavedWindowPosParams
@@ -295,7 +299,6 @@ MRVIEWER_API PaletteChanges Palette(
     MR::Palette& palette,
     std::string& presetName,
     float width,
-    float menuScaling,
     bool* fixZero = nullptr,
     float speed = 1.0f,
     float min = std::numeric_limits<float>::lowest(),
@@ -313,7 +316,7 @@ MR_MAKE_FLAG_OPERATORS( PlaneWidgetFlags )
 /// Helper plane widget, allows to draw specified plain in the scene \n
 /// can import plane from the scene, draw it with mouse or adjust with controls
 /// planeWidget stores the plane widget params
-MRVIEWER_API void Plane( MR::PlaneWidget& planeWidget, float menuScaling, PlaneWidgetFlags flags = {} );
+MRVIEWER_API void Plane( MR::PlaneWidget& planeWidget, PlaneWidgetFlags flags = {} );
 
 /// Shows 3 edit boxes for editing of world direction coordinates;
 /// \param editDragging must be initialized with zero, used to append only one history action on start dragging;
@@ -330,13 +333,13 @@ MRVIEWER_API MR::Vector2i GetImagePointerCoord( const MR::ImGuiImage& image, con
 
 
 /// draw spinner in given place, radius with respect to scaling
-MRVIEWER_API void Spinner( float radius, float scaling );
+MRVIEWER_API void Spinner( float radius );
 
 /// draw big title with close cross (i.e. for settings modal popup )
-MRVIEWER_API bool ModalBigTitle( const char* title, float scaling );
+MRVIEWER_API bool ModalBigTitle( const char* title );
 
 /// draw exit button with close cross (i.e. for settings modal popup )
-MRVIEWER_API bool ModalExitButton( float scaling );
+MRVIEWER_API bool ModalExitButton();
 
 /// get exponential speed for this value
 inline float getExpSpeed( float val, float frac = 0.01f, float min = 1e-5f )
@@ -348,4 +351,18 @@ inline float getLuminance( const ImVec4& col )
     return 0.2126f * col.x + 0.7152f * col.y + 0.0722f * col.z;
 }
 
+#ifdef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+/// content boundaries max for the full window (roughly (0,0)+Size-Scroll) where Size can be overridden with SetNextWindowContentSize(), in window coordinates
+/// \note copied from imgui because imgui recommends against using this method
+MRVIEWER_API ImVec2 GetWindowContentRegionMax();
+
+/// current content boundaries (typically window boundaries including scrolling, or current column boundaries), in windows coordinates
+/// \note copied from imgui because imgui recommends against using this method
+inline ImVec2 GetContentRegionMax()
+{
+    return GetContentRegionAvail() + GetCursorScreenPos() - GetWindowPos();
+}
+#endif
+
 } // namespace ImGui
+

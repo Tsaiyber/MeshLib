@@ -143,6 +143,22 @@ void ObjectMeshHolder::serializeFields_( Json::Value& root ) const
     root["Type"].append( ObjectMeshHolder::TypeName() );
 }
 
+size_t ObjectMeshHolder::getModelHash() const
+{
+    return std::hash<std::shared_ptr<MR::Mesh>>()( data_.mesh );
+}
+bool ObjectMeshHolder::sameModels( const Object& other ) const
+{
+    if ( const auto objectMeshHolder = dynamic_cast< const ObjectMeshHolder* >( &other ) )
+    {
+        const auto meshSaver = MeshSave::getMeshSaver( std::string( "*" ) + actualSerializeFormat() );
+        if ( meshSaver.capabilities.storesVertexColors )
+            return data_.mesh == objectMeshHolder->data_.mesh && data_.vertColors == objectMeshHolder->data_.vertColors;
+        return data_.mesh == objectMeshHolder->data_.mesh;
+    }
+    return false;
+}
+
 void ObjectMeshHolder::deserializeFields_( const Json::Value& root )
 {
     VisualObject::deserializeFields_( root );
@@ -260,6 +276,18 @@ Expected<void> ObjectMeshHolder::deserializeModel_( const std::filesystem::path&
 
     data_.mesh = std::make_shared<Mesh>( std::move( res.value() ) );
     return {};
+}
+
+Expected<void> ObjectMeshHolder::setSharedModel_( const Object& other )
+{
+    if ( const auto objectMeshHolder = dynamic_cast< const ObjectMeshHolder* >( &other ) )
+    {
+        // we don't use SetData() here because we set some fields of data_ from json, may be in future all model data saved to file move to separate struct ?
+        data_.mesh = objectMeshHolder->data_.mesh;
+        data_.vertColors = objectMeshHolder->data_.vertColors;
+        return{};
+    }
+    return unexpected("Invalid object type");
 }
 
 Box3f ObjectMeshHolder::computeBoundingBox_() const
@@ -435,44 +463,47 @@ void ObjectMeshHolder::copyColors( const ObjectMeshHolder& src, const VertMap& t
     setColoringType( src.getColoringType() );
 
     const auto& srcColorMap = src.getVertsColorMap();
-    if ( srcColorMap.empty() )
-        return;
-
-    VertColors colorMap;
-    colorMap.resizeNoInit( thisToSrc.size() );
-    ParallelFor( colorMap, [&] ( VertId id )
+    if ( !srcColorMap.empty() )
     {
-        auto curId = thisToSrc[id];
-        if( curId.valid() )
-            colorMap[id] = srcColorMap[curId];
-    } );
-    setVertsColorMap( std::move( colorMap ) );
+        VertColors colorMap;
+        colorMap.resizeNoInit( thisToSrc.size() );
+        ParallelFor( colorMap, [&] ( VertId id )
+        {
+            auto curId = thisToSrc[id];
+            if( curId.valid() )
+                colorMap[id] = srcColorMap[curId];
+        } );
+        setVertsColorMap( std::move( colorMap ) );
+    }
 
-    if ( !data_.faceColors.empty() && data_.mesh )
+    const auto& srcFaceColorMap = src.getFacesColorMap();
+    if ( !srcFaceColorMap.empty() && data_.mesh )
     {
-        const auto& validFace = data_.mesh->topology.getValidFaces();
+        const auto& validFaces = data_.mesh->topology.getValidFaces();
         FaceColors faceColors;
-        faceColors.resizeNoInit( validFace.size() );
+        faceColors.resizeNoInit( validFaces.size() );
 
-        Color color = data_.faceColors[thisToSrcFaces[validFace.backId()]];
-        bool differentColor = false;
+        std::optional<Color> commonColor;
+        bool differentColors = false;
 
-        for ( const auto& faceId : validFace )
+        for ( const auto& faceId : validFaces )
         {
             if ( !thisToSrcFaces[faceId].valid() )
                 continue;
 
-            auto& newColor = data_.faceColors[thisToSrcFaces[faceId]];
+            auto& newColor = srcFaceColorMap[thisToSrcFaces[faceId]];
             faceColors[faceId] = newColor;
-            if ( color != newColor )
-                differentColor = true;
+            if ( !commonColor )
+                commonColor = newColor;
+            else if ( *commonColor != newColor )
+                differentColors = true;
         }
 
-        if ( differentColor )
+        if ( differentColors )
             setFacesColorMap( std::move( faceColors ) );
-        else if ( src.getColoringType() == ColoringType::FacesColorMap )
+        else if ( commonColor && src.getColoringType() == ColoringType::FacesColorMap )
         {
-            setFrontColor( color, true );
+            setFrontColor( *commonColor, true );
             setColoringType( ColoringType::SolidColor );
         }
     }
@@ -831,6 +862,16 @@ void ObjectMeshHolder::setBordersColorsForAllViewports( ViewportProperty<Color> 
     needRedraw_ = true;
 }
 
+void ObjectMeshHolder::copyAllSolidColors( const ObjectMeshHolder& other )
+{
+    VisualObject::copyAllSolidColors( other );
+    setSelectedFacesColorsForAllViewports( other.getSelectedFacesColorsForAllViewports() );
+    setSelectedEdgesColorsForAllViewports( other.getSelectedEdgesColorsForAllViewports() );
+    setEdgesColorsForAllViewports( other.getEdgesColorsForAllViewports() );
+    setPointsColorsForAllViewports( other.getPointsColorsForAllViewports() );
+    setBordersColorsForAllViewports( other.getBordersColorsForAllViewports() );
+}
+
 const ViewportProperty<Color>& ObjectMeshHolder::getEdgesColorsForAllViewports() const
 {
     return edgesColor_;
@@ -839,6 +880,17 @@ const ViewportProperty<Color>& ObjectMeshHolder::getEdgesColorsForAllViewports()
 void ObjectMeshHolder::setEdgesColorsForAllViewports( ViewportProperty<Color> val )
 {
     edgesColor_ = std::move( val );
+    needRedraw_ = true;
+}
+
+const ViewportProperty<MR::Color>& ObjectMeshHolder::getPointsColorsForAllViewports() const
+{
+    return pointsColor_;
+}
+
+void ObjectMeshHolder::setPointsColorsForAllViewports( ViewportProperty<Color> val )
+{
+    pointsColor_ = std::move( val );
     needRedraw_ = true;
 }
 

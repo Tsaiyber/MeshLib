@@ -62,13 +62,12 @@ jobs:
     needs: [ config, prepare-image ]
     uses: ./.github/workflows/build-test-windows.yml
     with:
+      config_matrix:         ${{ needs.config.outputs.windows_x64_config_matrix }}
       full_config_build:     ${{ needs.config.outputs.full_config_build == 'true' }}
       internal_build:        ${{ needs.config.outputs.internal_build == 'true' }}
-      upload_artifacts:      ${{ needs.config.outputs.upload_artifacts == 'true' }}
+      upload_artifacts:      ${{ needs.config.outputs.upload_artifacts == 'true' || needs.config.outputs.tag-build-release-windows == 'true' }}
       upload_test_artifacts: ${{ needs.config.outputs.upload_test_artifacts == 'true' }}
-      vs19_vcpkg_version:    ${{ needs.config.outputs.vs19_vcpkg_version }}
-      vs22_vcpkg_version:    ${{ needs.config.outputs.vs22_vcpkg_version }}
-      nuget_build:           ${{ needs.config.outputs.build_enable_ubuntu_x64 == 'true' && needs.config.outputs.upload_artifacts == 'true' }}
+      nuget_build:           ${{ needs.config.outputs.build_enable_linux_vcpkg == 'true' && needs.config.outputs.upload_artifacts == 'true' }}
     secrets: inherit
 
   ubuntu-arm64-build-test:
@@ -96,7 +95,6 @@ jobs:
       internal_build:        ${{ needs.config.outputs.internal_build == 'true' }}
       upload_artifacts:      ${{ needs.config.outputs.upload_artifacts == 'true' }}
       upload_test_artifacts: ${{ needs.config.outputs.upload_test_artifacts == 'true' }}
-      nuget_build_patch:     ${{ needs.config.outputs.build_enable_windows == 'true' && needs.config.outputs.upload_artifacts == 'true'}}
     secrets: inherit
 
   linux-vcpkg-build-test:
@@ -110,6 +108,7 @@ jobs:
       internal_build:        ${{ needs.config.outputs.internal_build == 'true' }}
       upload_artifacts:      ${{ needs.config.outputs.upload_artifacts == 'true' }}
       upload_test_artifacts: ${{ needs.config.outputs.upload_test_artifacts == 'true' }}
+      nuget_build_patch:     ${{ needs.config.outputs.build_enable_windows == 'true' && needs.config.outputs.upload_artifacts == 'true'}}
     secrets: inherit
 
   emscripten-build-test:
@@ -134,99 +133,44 @@ jobs:
     secrets: inherit
 
   update-win-version:
-    if: ${{ needs.config.outputs.upload_artifacts == 'true' && needs.config.outputs.build_enable_windows == 'true' }}
+    if: ${{ needs.config.outputs.upload_artifacts == 'true' && needs.config.outputs.build_enable_windows == 'true' && needs.config.outputs.build-release-win == 'true' }}
     needs:
       - config
       - windows-build-test
-    timeout-minutes: 60
-    runs-on: [self-hosted, windows, x64, vs-2019, vcpkg-2024.10.21, meshinspector]
-    env:
+    uses: ./.github/workflows/update-win-version.yml
+    with:
       vs19_vcpkg_version: ${{ needs.config.outputs.vs19_vcpkg_version }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          submodules: true
-
-      - name: Checkout Vcpkg ${{env.vs19_vcpkg_version}}
-        working-directory: C:\vcpkg
-        run: |
-          git fetch
-          git checkout ${{env.vs19_vcpkg_version}}
-
-      - name: Restore Vcpkg Cache
-        uses: actions/cache@v4
-        id: vcpkg-cache
-        with:
-          key: vcpkg-cache-${{env.vs19_vcpkg_version}}
-          path: |
-            C:\vcpkg\*
-
-      - name: Update vcpkg packages
-        run: |
-          .\thirdparty\install.bat
-
-      - name: Download Windows Binaries Archive
-        uses: actions/download-artifact@v5
-        with:
-          pattern: WindowsArchive*
-          merge-multiple: true
-
-      - name: Extract Windows Binaries
-        run: |
-          tar -xvzf MREDist_Release.zip
-          tar -xvzf MREDist_Debug.zip
-          tar -xvzf MeshLibC2Headers.zip
-
-      - name: Make Install Folder
-        run: py -3.10 scripts\make_install_folder.py ${{ needs.config.outputs.app_version }}
-
-      - name: Add msbuild to PATH
-        uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
-
-      - name: Archive Distribution
-        run: py -3.10 scripts\zip_distribution.py install example_plugin MeshLibDist.zip
-
-      - name: Test Example Plugin # call it after archive not to pack build results
-        run: |
-          msbuild -m example_plugin\example_plugin.sln -p:Configuration=Debug
-          msbuild -m example_plugin\example_plugin.sln -p:Configuration=Release
-
-      - name: Upload Windows Distribution
-        uses: actions/upload-artifact@v4
-        with:
-          name: DistributivesWin
-          path: MeshLibDist.zip
-          retention-days: 1
+      app_version: ${{ needs.config.outputs.app_version }}
+    secrets: inherit
 
   create-nuget-package:
-    if: ${{ needs.config.outputs.upload_artifacts == 'true' && needs.config.outputs.build_enable_windows == 'true' && needs.config.outputs.build_enable_ubuntu_x64 == 'true'}}
+    if: ${{ needs.config.outputs.upload_artifacts == 'true' && needs.config.outputs.build_enable_windows == 'true' && needs.config.outputs.build_enable_linux_vcpkg == 'true' }}
     needs:
       - config
       - windows-build-test
-      - ubuntu-x64-build-test
+      - linux-vcpkg-build-test
     timeout-minutes: 20
-    runs-on: windows-2022
+    runs-on: windows-2025
     steps:
      - name: Checkout
-       uses: actions/checkout@v5
+       uses: actions/checkout@v6
 
      - name: Download NuGet Windows Patch Archive
-       uses: actions/download-artifact@v5
+       uses: actions/download-artifact@v6
        with:
          pattern: DotNetPatchArchiveWindows*
          path: windows_runtime
          merge-multiple: true
 
      - name: Download NuGet Linux Patch Archive
-       uses: actions/download-artifact@v5
+       uses: actions/download-artifact@v6
        with:
          pattern: DotNetPatchArchiveLinux*
          path: linux_runtime
          merge-multiple: true
 
      - name: Download NuGet DLL
-       uses: actions/download-artifact@v5
+       uses: actions/download-artifact@v6
        with:
          pattern: DotNetDll*
          path: dotnet_dll
@@ -244,7 +188,7 @@ jobs:
        run: nuget.exe pack Package.nuspec -OutputFileNamesWithoutVersion
 
      - name: Upload NuGet Package
-       uses: actions/upload-artifact@v4
+       uses: actions/upload-artifact@v5
        with:
          name: DistributivesNuGet
          path: MeshLib.nupkg
@@ -266,10 +210,10 @@ jobs:
       - macos-build-test
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Download All Developer Distributives
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           pattern: Distributives*
           merge-multiple: true
@@ -310,11 +254,15 @@ jobs:
       BUILD_MACHINE_TOKEN: ${{ secrets.BUILD_MACHINE_TOKEN }}
 
   test-distribution:
-    if: ${{ needs.config.outputs.upload_artifacts == 'true' }}
+    if: ${{ !cancelled() && needs.config.outputs.upload_artifacts == 'true' }}
     needs: [ config, upload-distributions ]
     uses: ./.github/workflows/test-distribution.yml
     with:
-      release_tag: ${{ needs.config.outputs.release_tag }}
+      release_tag:       ${{ needs.config.outputs.release_tag }}
+      test_ubuntu_x64:   ${{ needs.config.outputs.build_enable_ubuntu_x64 == 'true' }}
+      test_ubuntu_arm64: ${{ needs.config.outputs.build_enable_ubuntu_arm64 == 'true' }}
+      test_macos:        ${{ needs.config.outputs.build_enable_macos == 'true' }}
+      test_windows:      ${{ needs.config.outputs.build_enable_windows == 'true' && needs.config.outputs.build-release-win == 'true' }}
     secrets:
       GH_TOKEN: ${{ secrets.BUILD_MACHINE_TOKEN }}
 
@@ -343,15 +291,21 @@ jobs:
     continue-on-error: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Download runners' system stats
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           pattern: RunnerSysStats*
           merge-multiple: true
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - name: Download artifact stats
+        uses: actions/download-artifact@v6
+        with:
+          pattern: ArtifactStats*
+          merge-multiple: true
+
+      - uses: aws-actions/configure-aws-credentials@v5
         id: aws-creds
         with:
           aws-region: us-east-1
@@ -412,9 +366,15 @@ jobs:
           name: RunnerSysStats*
           failOnError: false
 
+      - name: Delete artifact stats
+        uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5
+        with:
+          name: ArtifactStats*
+          failOnError: false
+
       # generate timing logs archive
       - name: Download Timing Logs Archive
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           pattern: Timing_Logs*
           merge-multiple: true
@@ -431,7 +391,7 @@ jobs:
           fi
 
       - name: Upload Timing Logs Archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: time_log
           path: time_log.tar.gz

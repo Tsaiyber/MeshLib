@@ -29,13 +29,25 @@ void ViewerSetup::setupBasePlugins( Viewer* viewer ) const
     viewer->setMenuPlugin( menu );
 }
 
-void ViewerSetup::setupSettingsManager( Viewer* viewer, const std::string& appName ) const
+void ViewerSetup::setupSettingsManager( Viewer* viewer, const std::string& appName, bool reset ) const
 {
     assert( viewer );
 
     auto& cfg = MR::Config::instance();
-
+    // set filename
+    // reads config from it
+    //(needed even if `reset` flag is set because it is only way to set filename)
     cfg.reset( appName );
+    if ( reset )
+    {
+        // clears content
+        cfg.fromJson( Json::Value() );
+        // save existing config(cleared) to old filename(set on first call of cfg.reset(appName))
+        // set new filename(same as old)
+        // reads config(cleared) from it
+        cfg.reset( appName );
+    }
+
     std::unique_ptr<ViewerSettingsManager> mng = std::make_unique<ViewerSettingsManager>();
     viewer->setViewportSettingsManager( std::move( mng ) );
 }
@@ -77,7 +89,7 @@ void resetSettings( Viewer * viewer )
     const size_t memLimit = std::max( size_t( 2 ) * 1024 * 1024 * 1024, getSystemMemory().physicalTotal / 2 );
 #endif
     viewer->mouseController().setMouseControl( rotKey, MouseMode::Rotation );
-    rotKey.mod = GLFW_MOD_CONTROL;
+    rotKey.mod = getGlfwModPrimaryCtrl();
     viewer->mouseController().setMouseControl( rotKey, MouseMode::Roll );
     spdlog::info( "History memory limit: {}", bytesString( memLimit ) );
     viewer->getGlobalHistoryStore()->setMemoryLimit( memLimit );
@@ -114,7 +126,9 @@ void ViewerSetup::setupExtendedLibraries() const
     // sort by ascending priority
     std::sort( lib2priority.begin(), lib2priority.end(), []( auto& lhv, auto& rhv) { return lhv.second < rhv.second; } );
 
-    for (const auto& [libName, priority] : lib2priority) {
+    for (const auto& [libName, priority] : lib2priority)
+    {
+        Timer t( "load " + libName );
         std::filesystem::path pluginPath = SystemPath::getPluginsDirectory();
 #if _WIN32
         pluginPath /= libName + ".dll" ;
@@ -125,7 +139,7 @@ void ViewerSetup::setupExtendedLibraries() const
 #endif
         if ( exists( pluginPath, ec ) )
         {
-            spdlog::info( "Loading library {} with priority {}", utf8string( libName ), priority );
+            spdlog::info( "Loading library {} with priority {}", libName, priority );
             bool success = true;
             LoadedModule lm{ libName };
 #if _WIN32
@@ -147,7 +161,7 @@ void ViewerSetup::setupExtendedLibraries() const
 #endif
             if ( success )
             {
-                spdlog::info( "Load library {} was successful", utf8string( libName ) );
+                spdlog::info( "Load library {} was successful", libName );
                 loadedModules_.push_back( lm );
             }
         }
@@ -162,6 +176,7 @@ void ViewerSetup::unloadExtendedLibraries() const
     // unload in reverse order
     while ( !loadedModules_.empty() )
     {
+        Timer t( "unload " + utf8string( loadedModules_.back().filename.stem() ) );
         spdlog::info( "Unloading library {}", utf8string( loadedModules_.back().filename ) );
 #if _WIN32
         FreeLibrary( loadedModules_.back().module );

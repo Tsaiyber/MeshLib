@@ -118,8 +118,6 @@ if [[ $OSTYPE == 'darwin'* ]]; then
   PYTHON_INCLUDE_DIR=${PYTHON_PREFIX}/include/python${PYTHON_VERSION}
 
   MR_CMAKE_OPTIONS="${MR_CMAKE_OPTIONS} \
-    -D CMAKE_C_COMPILER=clang \
-    -D CMAKE_CXX_COMPILER=clang++ \
     -D PYTHON_LIBRARY=${PYTHON_LIBRARY} \
     -D PYTHON_INCLUDE_DIR=${PYTHON_INCLUDE_DIR} \
     -D PYTHON_EXECUTABLE:FILEPATH=${PYTHON_EXECUTABLE} \
@@ -146,7 +144,7 @@ if [ "${MESHLIB_BUILD_RELEASE}" = "ON" ]; then
     mkdir -p build/Release
   fi
   cd build/Release
-    cmake -S ../.. -B . -D CMAKE_BUILD_TYPE=Release ${MR_CMAKE_OPTIONS} | tee ${logfile}
+    cmake -S ../.. -B . -D CMAKE_BUILD_TYPE=Release ${MR_CMAKE_OPTIONS} $@ | tee ${logfile}
     cmake --build . -j ${NPROC} | tee ${logfile}
   cd ../..
 fi
@@ -157,7 +155,7 @@ if [ "${MESHLIB_BUILD_DEBUG}" = "ON" ]; then
     mkdir -p build/Debug
   fi
   cd build/Debug
-    cmake -S ../.. -B . -D CMAKE_BUILD_TYPE=Debug ${MR_CMAKE_OPTIONS} | tee ${logfile}
+    cmake -S ../.. -B . -D CMAKE_BUILD_TYPE=Debug ${MR_CMAKE_OPTIONS} $@ | tee ${logfile}
     cmake --build . -j ${NPROC} | tee ${logfile}
   cd ../..
 fi

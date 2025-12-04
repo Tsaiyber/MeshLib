@@ -65,6 +65,13 @@ namespace MR
     { return asString( path.u8string() ); }
 #endif
 
+/// it is a mistake to call the function with implicit construction of path from string
+std::string utf8string( const std::string & ) = delete;
+
+/// given on input a valid utf8-encoded string, returns its substring starting at \p pos unicode symbol,
+/// and containing at most \p count unicode symbols (but res.size() can be more than \p count since a unicode symbol can be represented by more than 1 byte)
+[[nodiscard]] MRMESH_API std::string utf8substr( const char * s, size_t pos, size_t count );
+
 /// \}
 
 /// converts given size in string:
@@ -74,10 +81,15 @@ namespace MR
 /// ...
 [[nodiscard]] MRMESH_API std::string bytesString( size_t size );
 
-/// returns true if line contains any of OS prohibited chars ('?', '*', '/', '\', '"', '<', '>')
+/// returns true if the given character is any of prohibited in filenames in any of OSes
+/// https://stackoverflow.com/q/1976007/7325599
+[[nodiscard]] inline bool isProhibitedChar( char c )
+    { return c == '?' || c == '*' || c == '/' || c == '\\' || c == '"' || c == '<' || c == '>' || c == ':' || c == '|' || (unsigned)c < 32; }
+
+/// returns true if line contains at least one character (c) for which isProhibitedChar(c)==true
 [[nodiscard]] MRMESH_API bool hasProhibitedChars( const std::string& line );
 
-/// replace OS prohibited chars ('?', '*', '/', '\', '"', '<', '>') with `replacement` char
+/// replace all characters (c), where isProhibitedChar(c)==true, with `replacement` char
 [[nodiscard]] MRMESH_API std::string replaceProhibitedChars( const std::string& line, char replacement = '_' );
 
 /// if (v) contains an error, then appends given file name to that error

@@ -47,12 +47,6 @@
   </ImportGroup>
   <Import Project="$(ProjectDir)\..\source\common.props" />
   <PropertyGroup Label="UserMacros" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LinkIncremental>true</LinkIncremental>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LinkIncremental>false</LinkIncremental>
-  </PropertyGroup>
   <!-- This fixes a crash in debug builds with our patched Pybind. -->
   <PropertyGroup Label="Vcpkg">
     <VcpkgAutoLink>false</VcpkgAutoLink>
@@ -67,7 +61,6 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <TreatWarningAsError>true</TreatWarningAsError>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(ProjectDir)mrbind-pybind11\include</AdditionalIncludeDirectories>
-      <DebugInformationFormat>OldStyle</DebugInformationFormat>
       <DisableSpecificWarnings>4061;4250;4324;4365;4371;4388;4435;4514;4582;4583;4599;4605;4623;4625;4626;4668;4686;4710;4711;4820;4866;4868;5026;5027;5031;5039;5045;5104;5105;5219;5243;5246;5262;5264;26451;4190;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ExceptionHandling>SyncCThrow</ExceptionHandling>
     </ClCompile>

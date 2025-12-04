@@ -7,14 +7,11 @@
 #include "MRRingIterator.h"
 #include "MRTriMath.h"
 #include "MRTimer.h"
-#include "MRCylinder.h"
-#include "MRGTest.h"
 #include "MRMeshDelone.h"
 #include "MRMeshSubdivide.h"
 #include "MRMeshRelax.h"
 #include "MRLineSegm.h"
 #include "MRPriorityQueue.h"
-#include "MRMakeSphereMesh.h"
 #include "MRBuffer.h"
 #include "MRTbbThreadMutex.h"
 #include "MRMeshFixer.h"
@@ -533,9 +530,19 @@ auto MeshDecimator::canCollapse_( EdgeId edgeToCollapse, const Vector3f & collap
     // cannot collapse internal edge if its left and right faces share another edge
     if ( vl && vr )
     {
+        bool oDegree2 = false;
         if ( auto pe = topology.prev( edgeToCollapse ); pe != edgeToCollapse && pe == topology.next( edgeToCollapse ) )
-            return { .status =  CollapseStatus::SharedEdge };
+            oDegree2 = true; // (pe) is shared between left and right faces of edgeToCollapse
+
+        bool dDegree2 = false;
         if ( auto pe = topology.prev( edgeToCollapse.sym() ); pe != edgeToCollapse.sym() && pe == topology.next( edgeToCollapse.sym() ) )
+            dDegree2 = true; // (pe) is shared between left and right faces of edgeToCollapse
+        
+        // if both oDegree2 and dDegree2 are true, then vl == vr
+        assert( !oDegree2 || !dDegree2 || vl == vr );
+
+        // but can collapse if left and right faces of edgeToCollapse share all 3 edges
+        if ( oDegree2 != dDegree2 )
             return { .status =  CollapseStatus::SharedEdge };
     }
     const bool collapsingFlippable = !settings_.notFlippable || !settings_.notFlippable->test( edgeToCollapse );
@@ -583,10 +590,9 @@ auto MeshDecimator::canCollapse_( EdgeId edgeToCollapse, const Vector3f & collap
     float maxOldEdgeLenSq = std::max( sqr( settings_.maxEdgeLen ), edgeLenSq );
     float maxNewEdgeLenSq = 0;
 
-    bool normalFlip = false; // at least one triangle flips its normal or a degenerate triangle becomes not-degenerate
     originNeis_.clear();
-    triDblAreas_.clear();
-    Vector3d sumDblArea_;
+    triDblAreas_.clear(); // new directed areas of triangles that flip their normal or became not-degenerate from degenerate
+    Vector3d sumDblArea;
     EdgeId oBdEdge; // a boundary edge !right(e) incident to org( edgeToCollapse )
     for ( EdgeId e : orgRing0( topology, edgeToCollapse ) )
     {
@@ -612,18 +618,15 @@ auto MeshDecimator::canCollapse_( EdgeId edgeToCollapse, const Vector3f & collap
         if ( eDest != vr )
         {
             auto da = cross( pDest - collapsePos, pDest2 - collapsePos );
-            if ( !normalFlip )
+            sumDblArea += Vector3d{ da };
+            const auto triAspect = triangleAspectRatio( collapsePos, pDest, pDest2 );
+            maxNewAspectRatio = std::max( maxNewAspectRatio, triAspect );
+            if ( triAspect < settings_.criticalTriAspectRatio ) // can trust direction of not-degenerate triangles only
             {
                 const auto oldA = cross( pDest - po, pDest2 - po );
                 if ( dot( da, oldA ) <= 0 )
-                    normalFlip = true;
+                    triDblAreas_.push_back( da );
             }
-            triDblAreas_.push_back( da );
-            sumDblArea_ += Vector3d{ da };
-            const auto triAspect = triangleAspectRatio( collapsePos, pDest, pDest2 );
-            if ( triAspect >= settings_.criticalTriAspectRatio )
-                triDblAreas_.back() = Vector3f{}; //cannot trust direction of degenerate triangles
-            maxNewAspectRatio = std::max( maxNewAspectRatio, triAspect );
         }
         maxOldAspectRatio = std::max( maxOldAspectRatio, triangleAspectRatio( po, pDest, pDest2 ) );
     }
@@ -657,18 +660,15 @@ auto MeshDecimator::canCollapse_( EdgeId edgeToCollapse, const Vector3f & collap
         if ( eDest != vl )
         {
             auto da = cross( pDest - collapsePos, pDest2 - collapsePos );
-            if ( !normalFlip )
+            sumDblArea += Vector3d{ da };
+            const auto triAspect = triangleAspectRatio( collapsePos, pDest, pDest2 );
+            maxNewAspectRatio = std::max( maxNewAspectRatio, triAspect );
+            if ( triAspect < settings_.criticalTriAspectRatio ) // can trust direction of not-degenerate triangles only
             {
                 const auto oldA = cross( pDest - pd, pDest2 - pd );
                 if ( dot( da, oldA ) <= 0 )
-                    normalFlip = true;
+                    triDblAreas_.push_back( da );
             }
-            triDblAreas_.push_back( da );
-            sumDblArea_ += Vector3d{ da };
-            const auto triAspect = triangleAspectRatio( collapsePos, pDest, pDest2 );
-            if ( triAspect >= settings_.criticalTriAspectRatio )
-                triDblAreas_.back() = Vector3f{}; //cannot trust direction of degenerate triangles
-            maxNewAspectRatio = std::max( maxNewAspectRatio, triAspect );
         }
         maxOldAspectRatio = std::max( maxOldAspectRatio, triangleAspectRatio( pd, pDest, pDest2 ) );
     }
@@ -689,10 +689,10 @@ auto MeshDecimator::canCollapse_( EdgeId edgeToCollapse, const Vector3f & collap
     if ( maxNewEdgeLenSq > maxOldEdgeLenSq )
         return { .status =  CollapseStatus::LongEdge }; // new edge would be longer than all of old edges and longer than allowed in settings
 
-    // if at least one triangle normal flips, checks that all new normals are consistent
-    if ( normalFlip && ( ( po != pd ) || ( po != collapsePos ) ) )
+    // if at least one remaining triangle flips its normal, checks that new normal is consistent with the average normal of new vertex neighborhood
+    if ( !triDblAreas_.empty() && ( ( po != pd ) || ( po != collapsePos ) ) )
     {
-        auto n = Vector3f{ sumDblArea_.normalized() };
+        auto n = Vector3f{ sumDblArea.normalized() };
         for ( const auto da : triDblAreas_ )
             if ( dot( da, n ) < 0 )
                 return { .status =  CollapseStatus::NormalFlip };
@@ -1248,14 +1248,12 @@ DecimateResult decimateObjectMeshData( ObjectMeshData & data, const DecimateSett
     const bool finalMeshPack = settings.packMesh;
     settings.packMesh = false;
 
-    assert( !settings.region );
-    settings.region = data.selectedFaces.any() ? &data.selectedFaces : nullptr;
-
     if ( settings.subdivideParts > 1 )
         settings.progressCallback = subprogress( set0.progressCallback, 0.2f, 1.0f );
 
     const bool updateUV = data.mesh->topology.lastValidVert() < data.uvCoordinates.size();
     const bool updateColorMap = data.mesh->topology.lastValidVert() < data.vertColors.size();
+    const bool updateFaceColorMap = data.mesh->topology.lastValidFace() < data.faceColors.size();
 
     if ( updateUV || updateColorMap )
     {
@@ -1275,6 +1273,10 @@ DecimateResult decimateObjectMeshData( ObjectMeshData & data, const DecimateSett
             data.uvCoordinates = rearrangeVectorByMap( data.uvCoordinates, packMapping.v );
         if ( updateColorMap )
             data.vertColors = rearrangeVectorByMap( data.vertColors, packMapping.v );
+        if ( updateFaceColorMap )
+            data.faceColors = rearrangeVectorByMap( data.faceColors, packMapping.f );
+        if ( data.selectedFaces.any() )
+            data.selectedFaces = data.selectedFaces.getMapping( packMapping.f );
         if ( settings.region )
             *settings.region = settings.region->getMapping( packMapping.f );
         emap = std::make_shared<UndirectedEdgeBMap>( std::move( packMapping.e ) );
@@ -1293,6 +1295,10 @@ DecimateResult decimateObjectMeshData( ObjectMeshData & data, const DecimateSett
             data.uvCoordinates = rearrangeVectorByMap( data.uvCoordinates, packMapping.v );
         if ( updateColorMap )
             data.vertColors = rearrangeVectorByMap( data.vertColors, packMapping.v );
+        if ( updateFaceColorMap )
+            data.faceColors = rearrangeVectorByMap( data.faceColors, packMapping.f );
+        if ( data.selectedFaces.any() )
+            data.selectedFaces = data.selectedFaces.getMapping( packMapping.f );
         if ( settings.region )
             *settings.region = settings.region->getMapping( packMapping.f );
         if ( emap )
@@ -1302,6 +1308,10 @@ DecimateResult decimateObjectMeshData( ObjectMeshData & data, const DecimateSett
 
         packMapping = {}; //free memory
         data.mesh->shrinkToFit();
+    }
+    else
+    {
+        data.selectedFaces &= data.mesh->topology.getValidFaces();
     }
 
     if ( emap && emap->tsize > 0 )
@@ -1359,6 +1369,8 @@ bool remesh( MR::Mesh& mesh, const RemeshSettings & settings )
     subs.maxEdgeLen = settings.targetEdgeLen;
     subs.maxEdgeSplits = settings.maxEdgeSplits;
     subs.maxAngleChangeAfterFlip = settings.maxAngleChangeAfterFlip;
+    subs.subdivideBorder = !settings.frozenBoundary;
+    subs.maxSplittableTriAspectRatio = settings.maxSplittableTriAspectRatio;
     subs.smoothMode = settings.useCurvature;
     subs.region = settings.region;
     subs.notFlippable = settings.notFlippable;
@@ -1382,6 +1394,7 @@ bool remesh( MR::Mesh& mesh, const RemeshSettings & settings )
         decs.maxError = FLT_MAX;
         decs.maxEdgeLen = 1.5f * settings.targetEdgeLen; // not to over-decimate when there are many notFlippable edges in the region
         decs.maxDeletedFaces = currNumTri - targetNumTri;
+        decs.touchBdVerts = !settings.frozenBoundary;
         decs.maxBdShift = settings.maxBdShift;
         decs.region = settings.region;
         decs.notFlippable = settings.notFlippable;
@@ -1422,45 +1435,6 @@ bool remesh( MR::Mesh& mesh, const RemeshSettings & settings )
     }
 
     return reportProgress( settings.progressCallback, 1.0f );
-}
-
-// check if Decimator updates region
-TEST( MRMesh, MeshDecimate )
-{
-    Mesh meshCylinder = makeCylinderAdvanced(0.5f, 0.5f, 0.0f, 20.0f / 180.0f * PI_F, 1.0f, 16);
-
-    // select all faces
-    MR::FaceBitSet regionForDecimation = meshCylinder.topology.getValidFaces();
-    MR::FaceBitSet regionSaved(regionForDecimation);
-
-    // setup and run decimator
-    DecimateSettings decimateSettings;
-    decimateSettings.maxError = 0.001f;
-    decimateSettings.region = &regionForDecimation;
-    decimateSettings.maxTriangleAspectRatio = 80.0f;
-
-    auto decimateResults = decimateMesh(meshCylinder, decimateSettings);
-
-    // compare regions and deleted vertices and faces
-    ASSERT_NE(regionSaved, regionForDecimation);
-    ASSERT_GT(decimateResults.vertsDeleted, 0);
-    ASSERT_GT(decimateResults.facesDeleted, 0);
-}
-
-TEST( MRMesh, MeshDecimateParallel )
-{
-    const int cNumVerts = 400;
-    auto mesh = makeSphere( { .numMeshVertices = cNumVerts } );
-    mesh.packOptimally();
-    DecimateSettings settings
-    {
-        .maxError = 1000000, // no actual limit
-        .maxDeletedVertices = cNumVerts - 1, // also no limit, but tests limitedDeletion mode
-        .subdivideParts = 8
-    };
-    decimateMesh( mesh, settings );
-    ASSERT_EQ( mesh.topology.numValidFaces(), 2 );
-    ASSERT_EQ( mesh.topology.numValidVerts(), 3 );
 }
 
 } //namespace MR

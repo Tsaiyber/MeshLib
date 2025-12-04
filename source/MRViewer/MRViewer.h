@@ -2,11 +2,8 @@
 
 #include "MRViewerInstance.h"
 #include "MRMouse.h"
-#include "MRSignalCombiners.h"
-#include "MRMakeSlot.h"
 #include <MRMesh/MRVector2.h>
 #include <MRMesh/MRViewportId.h>
-#include "MRMesh/MRSignal.h"
 #include "MRMesh/MRRenderModelParameters.h"
 #include <cstdint>
 #include <filesystem>
@@ -27,15 +24,7 @@ struct GLFWwindow;
 namespace MR
 {
 
-class ViewerTitle;
-
-class SpaceMouseHandler;
-
-class IDragDropHandler;
-
-class CornerControllerObject;
-
-class ViewportGlobalBasis;
+class FramebufferData;
 
 // This struct contains rules for viewer launch
 struct LaunchParams
@@ -55,7 +44,9 @@ struct LaunchParams
     bool preferOpenGL3{ false };
     bool render3dSceneInTexture{ true }; // If not set renders scene each frame
     bool developerFeatures{ false }; // If set shows some developer features useful for debugging
+    bool multiViewport{ true }; // If set allows to move the imgui (tool) windows outside the main () window. (unavailable for Apple, Wayland and Emscripten)
     std::string name{ "MRViewer" }; // Window name
+    bool resetConfig{ false }; // if true - resets config file on start of the application
     bool startEventLoop{ true }; // If false - does not start event loop
     bool close{ true }; // If !startEventLoop close immediately after start, otherwise close on window close, make sure you call `launchShut` manually if this flag is false
     bool console{ false }; // If true - shows developers console
@@ -68,28 +59,6 @@ struct LaunchParams
     bool unloadPluginsAtEnd{ false }; // unload all extended libraries right before program exit
 
     std::shared_ptr<SplashWindow> splashWindow; // if present will show this window while initializing plugins (after menu initialization)
-};
-
-using FilesLoadedCallback = std::function<void(const std::vector<std::shared_ptr<Object>>& objs,const std::string& errors, const std::string& warnings)>;
-
-struct FileLoadOptions
-{
-    /// first part of undo name
-    const char * undoPrefix = "Open ";
-
-    enum class ReplaceMode
-    {
-        ContructionBased, ///< replace current scene if new one was loaded from single scene file
-        ForceReplace,
-        ForceAdd
-    };
-
-    /// Determines how to deal with current scene after loading new one
-    ReplaceMode replaceMode = ReplaceMode::ContructionBased;
-
-    /// if this callback is set - it is called once when all objects are added to scene
-    /// top level objects only are present here
-    FilesLoadedCallback loadedCallback;
 };
 
 // GLFW-based mesh viewer
@@ -143,7 +112,8 @@ public:
 
     // Load objects / scenes from files
     // Note! load files with progress bar in next frame if it possible, otherwise load directly inside this function
-    MRVIEWER_API bool loadFiles( const std::vector< std::filesystem::path>& filesList, const FileLoadOptions & options = {} );
+    MRVIEWER_API bool loadFiles( const std::vector< std::filesystem::path>& filesList, const FileLoadOptions & options );
+    MRVIEWER_API bool loadFiles( const std::vector< std::filesystem::path>& filesList );
 
     // Save first selected objects to file
     MRVIEWER_API bool saveToFile( const std::filesystem::path & mesh_file_name );
@@ -188,7 +158,8 @@ public:
     // Draw 3d scene with UI
     MRVIEWER_API void drawFull( bool dirtyScene );
     // Draw 3d scene without UI
-    MRVIEWER_API void drawScene();
+    // framebuffer - bound framebuffer (needed if depth peeling is enabled)
+    MRVIEWER_API void drawScene( FramebufferData* framebuffer );
     // Call this function to force redraw scene into scene texture
     void setSceneDirty() { dirtyScene_ = true; }
     // Setup viewports views
@@ -255,11 +226,12 @@ public:
 
     // Get unique id of the vieport containing the mouse
     // if mouse is out of any viewport returns index of last selected viewport
-    // (current_mouse_x, current_mouse_y)
     MRVIEWER_API ViewportId getHoveredViewportId() const;
 
+    // Same, but returns an invalid ID if no viewport is hovered, instead of returning the last selected viewport.
+    MRVIEWER_API ViewportId getHoveredViewportIdOrInvalid() const;
+
     // Change selected_core_index to the viewport containing the mouse
-    // (current_mouse_x, current_mouse_y)
     MRVIEWER_API void select_hovered_viewport();
 
     // Calls fitData for single/each viewport in viewer
@@ -293,6 +265,9 @@ public:
     // Increment number of forced frames to redraw in event loop
     // if `swapOnLastOnly` only last forced frame will be present on screen and all previous will not
     MRVIEWER_API void incrementForceRedrawFrames( int i = 1, bool swapOnLastOnly = false );
+
+    // Forces redraw no later than the specified number of frames
+    MRVIEWER_API void forceSwapOnFrame( int i = 0 );
 
     // Returns true if current frame will be shown on display
     MRVIEWER_API bool isCurrentFrameSwapping() const;
@@ -340,8 +315,9 @@ public:
     /**
      * Captures 3d scene
      * @param resolution resolution of the image <= 0 means default
+     * @param transparentBg don't draw background / viewport borders
      */
-    MRVIEWER_API Image captureSceneScreenShot( const Vector2i& resolution = Vector2i() );
+    MRVIEWER_API Image captureSceneScreenShot( const Vector2i& resolution = Vector2i(), bool transparentBg = false );
 
     /**
      * Captures part of window in the beginning of next frame, capturing all that was drawn in this frame
@@ -359,6 +335,13 @@ public:
     MRVIEWER_API bool enableAlphaSort( bool on );
     // Returns true if alpha sort is enabled, false otherwise
     bool isAlphaSortEnabled() const { return alphaSortEnabled_; }
+
+    // Returns number of passes performed by depth peeler
+    MRVIEWER_API int getDepthPeelNumPasses() const;
+    // Sets desired number of passes to depth peeler
+    MRVIEWER_API void setDepthPeelNumPasses( int numPasses );
+    // Returns true if depth peeling is enabled, false otherwise
+    MRVIEWER_API bool isDepthPeelingEnabled() const;
 
     // Returns if scene texture is now bound
     MRVIEWER_API bool isSceneTextureBound()  const;
@@ -505,88 +488,8 @@ public:
     // class that updates viewer title
     std::shared_ptr<ViewerTitle> windowTitle;
 
-    //*********
-    // SIGNALS
-    //*********
-    using SignalStopHandler = StopOnTrueCombiner;
-    // Mouse events
-    using MouseUpDownSignal = boost::signals2::signal<bool( MouseButton btn, int modifier ), SignalStopHandler>;
-    using MouseMoveSignal = boost::signals2::signal<bool( int x, int y ), SignalStopHandler>;
-    using MouseScrollSignal = boost::signals2::signal<bool( float delta ), SignalStopHandler>;
-    MouseUpDownSignal mouseDownSignal; // signal is called on mouse down
-    MouseUpDownSignal mouseUpSignal; // signal is called on mouse up
-    MouseMoveSignal mouseMoveSignal; // signal is called on mouse move, note that input x and y are in screen space
-    MouseScrollSignal mouseScrollSignal; // signal is called on mouse is scrolled
-    // High-level mouse events for clicks and dragging, emitted by MouseController
-    // When mouseClickSignal has connections, a small delay for click detection is introduced into camera operations and dragging
-    // Dragging starts if dragStartSignal is handled (returns true), and ends on button release
-    // When dragging is active, dragSignal and dragEndSignal are emitted instead of mouseMove and mouseUp
-    // mouseDown handler have priority over dragStart
-    MouseUpDownSignal mouseClickSignal; // signal is called when mouse button is pressed and immediately released
-    MouseUpDownSignal dragStartSignal; // signal is called when mouse button is pressed (deterred if click behavior is on)
-    MouseUpDownSignal dragEndSignal; // signal is called when mouse button used to start drag is released
-    MouseMoveSignal dragSignal; // signal is called when mouse is being dragged with button down
-    // Cursor enters/leaves
-    using CursorEntranceSignal = boost::signals2::signal<void(bool)>;
-    CursorEntranceSignal cursorEntranceSignal;
-    // Keyboard event
-    using CharPressedSignal = boost::signals2::signal<bool( unsigned unicodeKey, int modifier ), SignalStopHandler>;
-    using KeySignal = boost::signals2::signal<bool( int key, int modifier ), SignalStopHandler>;
-    CharPressedSignal charPressedSignal; // signal is called when unicode char on/is down/pressed for some time
-    KeySignal keyUpSignal; // signal is called on key up
-    KeySignal keyDownSignal; // signal is called on key down
-    KeySignal keyRepeatSignal; // signal is called when key is pressed for some time
-    // SpaceMouseEvents
-    using SpaceMouseMoveSignal = boost::signals2::signal<bool( const Vector3f& translate, const Vector3f& rotate ), SignalStopHandler>;
-    using SpaceMouseKeySignal = boost::signals2::signal<bool( int ), SignalStopHandler>;
-    SpaceMouseMoveSignal spaceMouseMoveSignal; // signal is called on spacemouse 3d controller (joystick) move
-    SpaceMouseKeySignal spaceMouseDownSignal; // signal is called on spacemouse key down
-    SpaceMouseKeySignal spaceMouseUpSignal; // signal is called on spacemouse key up
-    SpaceMouseKeySignal spaceMouseRepeatSignal; // signal is called when spacemouse key is pressed for some time
-    // Render events
-    using RenderSignal = boost::signals2::signal<void()>;
-    RenderSignal preSetupViewSignal; // signal is called before viewports cleanup and camera setup, so one can customize camera XFs for this frame
-    RenderSignal preDrawSignal; // signal is called before scene draw (but after scene setup)
-    RenderSignal preDrawPostViewportSignal; // signal is called before scene draw but after viewport.preDraw()
-    RenderSignal drawSignal; // signal is called on scene draw (after objects tree but before viewport.postDraw())
-    RenderSignal postDrawPreViewportSignal; // signal is called after scene draw but after before viewport.postDraw()
-    RenderSignal postDrawSignal; // signal is called after scene draw
-    // Scene events
-    using ObjectsLoadedSignal = boost::signals2::signal<void( const std::vector<std::shared_ptr<Object>>& objs, const std::string& errors, const std::string& warnings )>;
-    using DragDropSignal = boost::signals2::signal<bool( const std::vector<std::filesystem::path>& paths ), SignalStopHandler>;
-    using PostResizeSignal = boost::signals2::signal<void( int x, int y )>;
-    using PostRescaleSignal = boost::signals2::signal<void( float xscale, float yscale )>;
-    using InterruptCloseSignal = boost::signals2::signal<bool(), SignalStopHandler>;
-    ObjectsLoadedSignal objectsLoadedSignal; // signal is called when objects are loaded by Viewer::loadFiles  function
-    CursorEntranceSignal dragEntranceSignal; // signal is called on drag enter/leave the window
-    MouseMoveSignal dragOverSignal; // signal is called on drag coordinate changed
-    DragDropSignal dragDropSignal; // signal is called on drag and drop file
-    PostResizeSignal postResizeSignal; // signal is called after window resize
-    PostRescaleSignal postRescaleSignal; // signal is called after window rescale
-    InterruptCloseSignal interruptCloseSignal; // signal is called before close window (return true will prevent closing)
-    // Touch signals
-    using TouchSignal = boost::signals2::signal<bool(int,int,int), SignalStopHandler>;
-    TouchSignal touchStartSignal; // signal is called when any touch starts
-    TouchSignal touchMoveSignal; // signal is called when touch moves
-    TouchSignal touchEndSignal; // signal is called when touch stops
-    // Touchpad gesture events
-    using TouchpadGestureBeginSignal = boost::signals2::signal<bool(), SignalStopHandler>;
-    using TouchpadGestureEndSignal = boost::signals2::signal<bool(), SignalStopHandler>;
-    using TouchpadRotateGestureUpdateSignal = boost::signals2::signal<bool( float angle ), SignalStopHandler>;
-    using TouchpadSwipeGestureUpdateSignal = boost::signals2::signal<bool( float deltaX, float deltaY, bool kinetic ), SignalStopHandler>;
-    using TouchpadZoomGestureUpdateSignal = boost::signals2::signal<bool( float scale, bool kinetic ), SignalStopHandler>;
-    TouchpadGestureBeginSignal touchpadRotateGestureBeginSignal; // signal is called on touchpad rotate gesture beginning
-    TouchpadRotateGestureUpdateSignal touchpadRotateGestureUpdateSignal; // signal is called on touchpad rotate gesture update
-    TouchpadGestureEndSignal touchpadRotateGestureEndSignal; // signal is called on touchpad rotate gesture end
-    TouchpadGestureBeginSignal touchpadSwipeGestureBeginSignal; // signal is called on touchpad swipe gesture beginning
-    TouchpadSwipeGestureUpdateSignal touchpadSwipeGestureUpdateSignal; // signal is called on touchpad swipe gesture update
-    TouchpadGestureEndSignal touchpadSwipeGestureEndSignal; // signal is called on touchpad swipe gesture end
-    TouchpadGestureBeginSignal touchpadZoomGestureBeginSignal; // signal is called on touchpad zoom gesture beginning
-    TouchpadZoomGestureUpdateSignal touchpadZoomGestureUpdateSignal; // signal is called on touchpad zoom gesture update
-    TouchpadGestureEndSignal touchpadZoomGestureEndSignal; // signal is called on touchpad zoom gesture end
-    // Window focus signal
-    using PostFocusSignal = boost::signals2::signal<void( bool )>;
-    PostFocusSignal postFocusSignal;
+    /// return the structure with all viewer's signals
+    ViewerSignals & signals() { return *signals_; }
 
     /// emplace event at the end of the queue
     /// replace last skipable with new skipable
@@ -619,6 +522,12 @@ public:
     /// \param deviceSignal every device-related event will be sent here: find, connect, disconnect
     MRVIEWER_API void initSpaceMouseHandler( std::function<void(const std::string&)> deviceSignal = {} );
 
+    /// draw 2d (UI) part of objects in scene
+    MRVIEWER_API void drawUiRenderObjects();
+
+    /// return true if imgui multi viewport enabled
+    /// (disabled for Apple, Wayland and Emscripten)
+    bool isMultiViewport();
 private:
     Viewer();
     ~Viewer();
@@ -647,8 +556,6 @@ private:
 #endif
     // returns true if was swapped
     bool draw_( bool force );
-
-    void drawUiRenderObjects_();
 
     // the minimum number of frames to be rendered even if the scene is unchanged
     int forceRedrawFrames_{ 0 };
@@ -691,8 +598,6 @@ private:
     bool needRedraw_() const;
     void resetRedraw_();
 
-    void recursiveDraw_( const Viewport& vp, const Object& obj, const AffineXf3f& parentXf, RenderModelPassMask renderType, int* numDraws = nullptr ) const;
-
     void initGlobalBasisAxesObject_();
     void initBasisAxesObject_();
     void initBasisViewControllerObject_();
@@ -715,8 +620,9 @@ private:
 
     std::unique_ptr<SceneTextureGL> sceneTexture_;
     std::unique_ptr<AlphaSortGL> alphaSorter_;
+    std::unique_ptr<DepthPeelingGL> depthPeeler_;
 
-    bool alphaSortEnabled_{false};
+    bool alphaSortEnabled_{ false };
 
     bool glInitialized_{ false };
 
@@ -732,21 +638,24 @@ private:
     ViewportId getFirstAvailableViewportId_() const;
     ViewportMask presentViewportsMask_;
 
+    // allows to move the imgui (tool) windows outside the main () window (enable ImGui Muilti Viewport)
+    // (disabled for Apple, Wayland and Emscripten)
+    bool multiViewport_{ true };
+
     std::unique_ptr<IViewerSettingsManager> settingsMng_;
 
     std::shared_ptr<HistoryStore> globalHistoryStore_;
 
     std::shared_ptr<SpaceMouseHandler> spaceMouseHandler_;
 
-    std::vector<boost::signals2::scoped_connection> uiUpdateConnections_;
+    struct Connections;
+    std::unique_ptr<Connections> connections_;
+    std::unique_ptr<ViewerSignals> signals_;
 
     friend MRVIEWER_API Viewer& getViewerInstance();
 };
 
 // starts default viewer with given params and setup
 MRVIEWER_API int launchDefaultViewer( const Viewer::LaunchParams& params, const ViewerSetup& setup );
-
-// call this function to load MRViewer.dll
-MRVIEWER_API void loadMRViewerDll();
 
 } // end namespace

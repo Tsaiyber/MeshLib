@@ -87,6 +87,16 @@ std::string utf8ToSystem( const std::string & utf8 )
 #endif
 }
 
+std::string utf8substr( const char * s, size_t pos, size_t count )
+{
+    if ( !s )
+    {
+        assert( false );
+        return {};
+    }
+    return wideToUtf8( utf8ToWide( s ).substr( pos, count ).c_str() );
+}
+
 std::string bytesString( size_t size )
 {
     if ( size < 1024 )
@@ -101,7 +111,7 @@ std::string bytesString( size_t size )
 bool hasProhibitedChars( const std::string& line )
 {
     for ( const auto& c : line )
-        if ( c == '?' || c == '*' || c == '/' || c == '\\' || c == '"' || c == '<' || c == '>' )
+        if ( isProhibitedChar( c ) )
             return true;
     return false;
 }
@@ -110,7 +120,7 @@ std::string replaceProhibitedChars( const std::string& line, char replacement /*
 {
     auto res = line;
     for ( auto& c : res )
-        if ( c == '?' || c == '*' || c == '/' || c == '\\' || c == '"' || c == '<' || c == '>' )
+        if ( isProhibitedChar( c ) )
             c = replacement;
     return res;
 }

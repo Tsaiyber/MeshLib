@@ -19,13 +19,13 @@ public:
 
     /// Main method for drawing all
     /// \detail Not creat window. Use in window block (between ImGui::Begin and ImGui::End)
-    MRVIEWER_API virtual void draw( float height, float scaling );
-    
+    MRVIEWER_API virtual void draw( float height );
+
     /// set flag of the object visibility activation after selection
     void setShowNewSelectedObjects( bool show ) { showNewSelectedObjects_ = show; };
     /// get flag of the object visibility activation after selection
     bool getShowNewSelectedObjects() { return showNewSelectedObjects_; };
-    
+
     /// set flag of deselect object after hidden
     void setDeselectNewHiddenObjects( bool deselect ) { deselectNewHiddenObjects_ = deselect; }
     /// get flag of deselect object after hidden
@@ -105,7 +105,7 @@ protected:
 private:
     void drawObjectsList_();
 
-    float getDrawDropTargetHeight_() const { return 4.f * menuScaling_; }
+    float getDrawDropTargetHeight_() const;
     void reorderSceneIfNeeded_();
 
     /// this function should be called after BeginChild("SceneObjectsList") (child window with scene tree)
@@ -117,7 +117,6 @@ private:
                                            const std::vector<std::shared_ptr<Object>>& all );
     void updateSelection_( Object* objPtr, const std::vector<std::shared_ptr<Object>>& selected, const std::vector<std::shared_ptr<Object>>& all );
 
-    bool dragTrigger_ = false;
     bool clickTrigger_ = false;
     bool allowSceneReorder_ = true;
 
@@ -144,10 +143,13 @@ private:
     bool nextFrameFixScroll_{ false };
     // flag to know if we are dragging objects now or not
     bool dragObjectsMode_{ false };
+    // dragging either just started, or just stopped
+    bool dragModeTrigger_{ false };
 
 protected:
-    float menuScaling_ = 1.f;
     std::unordered_map<const Object*, bool> sceneOpenCommands_;
 };
 
-}
+constexpr inline int sDefaultGroupState = 0; // 0 means closed; the other option is ImGuiTreeNodeFlags_DefaultOpen
+
+} //namespace MR

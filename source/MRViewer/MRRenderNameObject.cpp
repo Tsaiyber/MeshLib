@@ -3,49 +3,19 @@
 #include "MRImGuiVectorOperators.h"
 #include "MRRibbonMenu.h"
 #include "MRViewport.h"
+#include "MRImGuiMultiViewport.h"
 
 #include "MRMesh/MRFinally.h"
 #include "MRMesh/MRSceneRoot.h"
 #include "MRMesh/MRString.h"
 #include "MRMesh/MRVisualObject.h"
 
+#include "MRUIStyle.h"
+#include "ImGuiHelpers.h"
 #include <imgui.h>
 
 namespace MR
 {
-
-void RenderNameObject::Task::earlyBackwardPass( const BackwardPassParams& backParams )
-{
-    if ( bool( backParams.consumedInteractions & InteractionMask::mouseHover ) )
-        return;
-
-    // If it wasn't clipped to nothing...
-    if ( ImGuiMath::CompareAll( windowCornerA ) < windowCornerB )
-    {
-        // React to hover and possibly click.
-        if ( ImGuiMath::CompareAll( ImGui::GetMousePos() ) >= windowCornerA && ImGuiMath::CompareAll( ImGui::GetMousePos() ) < windowCornerB )
-        {
-            if ( backParams.tryConsumeMouseHover() )
-            {
-                isHovered = true;
-
-                if ( prevFrameHovered && ImGui::IsMouseDown( ImGuiMouseButton_Left ) )
-                    isActive = true;
-
-                if ( prevFrameHovered && ImGui::IsMouseClicked( ImGuiMouseButton_Left ) )
-                {
-                    RibbonMenu::instance()->simulateNameTagClick(
-                        // Yes, a dumb cast. We could find the same object in the scene, but it's a waste of time.
-                        // Changing the `RenderObject` constructor parameter to accept a non-const reference requires changing a lot of stuff.
-                        *const_cast<VisualObject*>( object ),
-                        ImGui::GetIO().KeyCtrl ? ImGuiMenu::NameTagSelectionMode::toggle : ImGuiMenu::NameTagSelectionMode::selectOne
-                    );
-                }
-            }
-        }
-    }
-    prevFrameHovered = isHovered;
-}
 
 void RenderNameObject::Task::renderPass()
 {
@@ -54,10 +24,10 @@ void RenderNameObject::Task::renderPass()
 
     const float
         // Button rounding.
-        rounding = 4 * params->scale,
-        lineWidth = 2 * params->scale,
-        lineOutlineWidth = 1 * params->scale,
-        buttonOutlineWidth = 1 * params->scale;
+        rounding = 4 * UI::scale(),
+        lineWidth = 2 * UI::scale(),
+        lineOutlineWidth = 1 * UI::scale(),
+        buttonOutlineWidth = 1 * UI::scale();
 
     const ImU32 colorOutline = ImGui::ColorConvertFloat4ToU32( ImVec4( 0, 0, 0, 0.5f ) );
 
@@ -113,25 +83,25 @@ void RenderNameObject::Task::renderPass()
     drawList.AddRectFilled( textPos - paddingA, textPos + text.computedSize + paddingB, isHovered && !isActive ? colorHovered : colorMain, rounding );
 
     // The text.
-    text.draw( drawList, params->scale, textPos, colorText );
+    text.draw( drawList, textPos, colorText );
 
     // The extra text.
     if ( !textExtra.isEmpty() )
     {
-        ImGuiMeasurementIndicators::text( ImGuiMeasurementIndicators::Element::both, params->scale, {}, textPos + ImVec2( std::round( -buttonOutlineWidth ), text.computedSize.y + textToExtraTextSpacing ), textExtra, {}, ImVec2( 0, 0 ) );
+        ImGuiMeasurementIndicators::text( ImGuiMeasurementIndicators::Element::both, {}, textPos + ImVec2( std::round( -buttonOutlineWidth ), text.computedSize.y + textToExtraTextSpacing ), textExtra, {}, {}, ImVec2( 0, 0 ) );
     }
+}
 
-    // Reset the variables.
-    isHovered = false;
-    isActive = false;
+void RenderNameObject::Task::onClick()
+{
+    // Yes, a dumb cast. We could find the same object in the scene, but it's a waste of time.
+    // Changing the `RenderObject` constructor parameter to accept a non-const reference requires changing a lot of stuff.
+    RibbonMenu::instance()->simulateNameTagClickWithKeyboardModifiers( *const_cast<VisualObject*>( object ) );
 }
 
 void RenderNameObject::renderUi( const UiRenderParams& params )
 {
     task_.params = &params;
-
-    task_.isHovered = false;
-    task_.isActive = false;
 
     if ( !task_.object->getVisualizeProperty( VisualizeMaskType::Name, params.viewportId ) )
         return; // The name is hidden in this viewport.
@@ -139,11 +109,11 @@ void RenderNameObject::renderUi( const UiRenderParams& params )
     const float
         // When offsetting the button relative to a point, this is the gap to the point (or rather to an imaginary line passing through the point,
         //   perpendicular to the offset direction).
-        buttonSpacingToPoint = 30 * params.scale;
+        buttonSpacingToPoint = 30 * UI::scale();
 
 
-    task_.paddingA = ImGuiMath::round( ImVec2( 4, 2 ) * params.scale ),
-    task_.paddingB = ImGuiMath::round( ImVec2( 4, 4 ) * params.scale );
+    task_.paddingA = ImGuiMath::round( ImVec2( 4, 2 ) * UI::scale() ),
+    task_.paddingB = ImGuiMath::round( ImVec2( 4, 4 ) * UI::scale() );
 
     auto xf = task_.object->worldXf();
 
@@ -158,12 +128,12 @@ void RenderNameObject::renderUi( const UiRenderParams& params )
 
     Vector3f worldPoint = xf( localPoint );
     Vector3f worldPoint2 = xf( localPoint + nameUiLocalOffset );
-    ImVec2 point3Offset = ImVec2( nameUiScreenOffset ) * params.scale;
+    ImVec2 point3Offset = ImVec2( nameUiScreenOffset ) * UI::scale();
 
     task_.text = getObjectNameText( *task_.object, params.viewportId );
 
     task_.textExtra = getObjectNameExtraText( *task_.object, params.viewportId );
-    task_.textToExtraTextSpacing = std::round( 11 * params.scale );
+    task_.textToExtraTextSpacing = std::round( 11 * UI::scale() );
 
     Viewport& viewportRef = Viewport::get( params.viewportId );
 
@@ -175,7 +145,8 @@ void RenderNameObject::renderUi( const UiRenderParams& params )
         auto result = viewportRef.projectToViewportSpace( point );
         if ( depthOutput )
             *depthOutput = result.z;
-        return ImVec2( result.x, result.y ) + viewportCornerA;
+
+        return ImGuiMV::Window2ScreenSpaceImVec2( ImVec2( result.x, result.y ) + viewportCornerA );
     };
 
     Vector3f fixedWorldPoint = worldPoint;
@@ -261,8 +232,9 @@ void RenderNameObject::renderUi( const UiRenderParams& params )
 
     task_.textPos = ImGuiMath::round( task_.textPos );
 
-    task_.windowCornerA = ImGuiMath::clamp( task_.textPos - task_.paddingA, viewportCornerA, viewportCornerB );
-    task_.windowCornerB = ImGuiMath::clamp( task_.textPos + task_.text.computedSize + task_.paddingB, viewportCornerA, viewportCornerB );
+    task_.clickableCornerA = task_.textPos - task_.paddingA;
+    task_.clickableCornerB = task_.textPos + task_.text.computedSize + task_.paddingB;
+    task_.enabled = !task_.object->isGlobalAncillary();
 
     // A non-owning pointer to our task_.
     params.tasks->push_back( { std::shared_ptr<void>{}, &task_ } );

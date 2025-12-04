@@ -1,10 +1,13 @@
 #include "MRIOFilesMenuItems.h"
 #include "MRMesh/MRChrono.h"
+#include "MRViewer/MRColorTheme.h"
 #include "MRViewer/MRFileDialog.h"
 #include "MRViewer/MRMouseController.h"
 #include "MRViewer/MRRecentFilesStore.h"
 #include "MRViewer/MRViewport.h"
 #include "MRViewer/MROpenObjects.h"
+#include "MRViewer/MRFileLoadOptions.h"
+#include "MRViewer/MRUnitSettings.h"
 #include "MRMesh/MRDirectory.h"
 #include "MRMesh/MRLinesLoad.h"
 #include "MRMesh/MRPointsLoad.h"
@@ -28,6 +31,7 @@
 #include "MRMesh/MRSceneRoot.h"
 #include "MRViewer/MRRibbonMenu.h"
 #include "MRViewer/MRViewer.h"
+#include "MRViewer/MRViewerSignals.h"
 #include "MRMesh/MRImageSave.h"
 #include "MRMesh/MRObjectsAccess.h"
 #include "MRViewer/MRCommandLoop.h"
@@ -43,6 +47,8 @@
 #include "MRViewer/MRUIStyle.h"
 #include "MRViewer/MRLambdaRibbonItem.h"
 #include "MRIOExtras/MRPng.h"
+#include "MRViewer/MRRibbonFontHolder.h"
+#include "MRViewer/MRImGuiMultiViewport.h"
 
 #ifndef MESHLIB_NO_VOXELS
 #include "MRVoxels/MRObjectVoxels.h"
@@ -317,11 +323,9 @@ void OpenFilesMenuItem::preDraw_()
 
     bool addAreaHovered = false;
 
-    float scaling = 1.0f;
     auto menu = getViewerInstance().getMenuPluginAs<RibbonMenu>();
     if ( menu )
     {
-        scaling = menu->menu_scaling();
         auto sceneBoxSize = menu->getSceneSize();
         auto headerHeight = getViewerInstance().framebufferSize.y - sceneBoxSize.y;
         if ( dragPos_.x <= sceneBoxSize.x && dragPos_.y >= headerHeight )
@@ -330,18 +334,15 @@ void OpenFilesMenuItem::preDraw_()
 
     auto mainColor = ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::BackgroundSecStyle );
     auto secondColor = ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::Background );
+    
+    ImVec2 offset = ImVec2( 10.0f, 10.0f ) * UI::scale();
+    ImVec2 min = ImGuiMV::Window2ScreenSpaceImVec2( offset );
+    ImVec2 max = ImGuiMV::Window2ScreenSpaceImVec2( ImVec2( Vector2f( getViewerInstance().framebufferSize ) ) - offset );
+    drawList->AddRectFilled( min, max,
+        ( addAreaHovered ? secondColor : mainColor ).scaledAlpha( 0.8f ).getUInt32(), 10.0f * UI::scale() );
+    drawList->AddRect( min, max, ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::Borders ).getUInt32(), 10.0f * UI::scale(), 0, 2.0f * UI::scale() );
 
-    ImVec2 min = ImVec2( 10.0f * scaling, 10.0f * scaling );
-    ImVec2 max = ImVec2( Vector2f( getViewerInstance().framebufferSize ) );
-    max.x -= min.x;
-    max.y -= min.y;
-    drawList->AddRectFilled( min, max, 
-        ( addAreaHovered ? secondColor : mainColor ).scaledAlpha( 0.8f ).getUInt32(), 10.0f * scaling );
-    drawList->AddRect( min, max, ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::Borders ).getUInt32(), 10.0f * scaling, 0, 2.0f * scaling );
-
-    auto bigFont = RibbonFontManager::getFontByTypeStatic( RibbonFontManager::FontType::Headline );
-    if ( bigFont )
-        ImGui::PushFont( bigFont );
+    RibbonFontHolder bigFont( RibbonFontManager::FontType::Headline );
 
     auto textSize = ImGui::CalcTextSize( "Load as Scene" );
     auto textPos = ImVec2( 0.5f * ( max.x + min.x - textSize.x ), 0.5f * ( max.y + min.y - textSize.y ) );
@@ -351,17 +352,16 @@ void OpenFilesMenuItem::preDraw_()
     {
         auto sceneBoxSize = menu->getSceneSize();
         min.y += ( getViewerInstance().framebufferSize.y - sceneBoxSize.y );
-        max.x = sceneBoxSize.x - min.x;
-        drawList->AddRectFilled( min, max, ( addAreaHovered ? mainColor : secondColor ).scaledAlpha( 0.8f ).getUInt32(), 10.0f * scaling );
-        drawList->AddRect( min, max, ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::Borders ).getUInt32(), 10.0f * scaling, 0, 2.0f * scaling );
+        max.x = min.x + sceneBoxSize.x - offset.x * 2.f;
+        drawList->AddRectFilled( min, max, ( addAreaHovered ? mainColor : secondColor ).scaledAlpha( 0.8f ).getUInt32(), 10.0f * UI::scale() );
+        drawList->AddRect( min, max, ColorTheme::getRibbonColor( ColorTheme::RibbonColorsType::Borders ).getUInt32(), 10.0f * UI::scale(), 0, 2.0f * UI::scale() );
 
         textSize = ImGui::CalcTextSize( "Add Files" );
         textPos = ImVec2( 0.5f * ( max.x + min.x - textSize.x ), 0.5f * ( max.y + min.y - textSize.y ) );
         drawList->AddText( textPos, ImGui::GetColorU32( ImGuiCol_Text ), "Add Files" );
     }
 
-    if ( bigFont )
-        ImGui::PopFont();
+    bigFont.popFont();
 }
 
 void OpenFilesMenuItem::parseLaunchParams_()
@@ -501,7 +501,7 @@ void OpenDirectoryMenuItem::openDirectory( const std::filesystem::path& director
                     SceneRoot::get().addChild( obj );
                     getViewerInstance().viewport().preciseFitDataToScreenBorder( { 0.9f } );
                     getViewerInstance().recentFilesStore().storeFile( directory );
-                    getViewerInstance().objectsLoadedSignal( { obj }, {}, warnings );
+                    getViewerInstance().signals().objectsLoadedSignal( { obj }, {}, warnings );
                     if ( !warnings.empty() )
                         pushNotification( { .text = warnings, .type = NotificationType::Warning } );
                 };
@@ -547,14 +547,20 @@ template<typename T>
 std::optional<SaveInfo> getSaveInfo( const std::vector<std::shared_ptr<T>> & objs )
 {
     std::optional<SaveInfo> res;
-    if ( objs.empty() )
+    // return nullopt if there is no single VisualObject in objs
+    if ( std::none_of( objs.begin(), objs.end(), [&]( const auto & pObj )
+        { return dynamic_cast<const VisualObject*>( pObj.get() ); } ) )
         return res;
 
     auto checkObjects = [&]<class U>( SaveInfo info )
     {
         for ( const auto & obj : objs )
+        {
+            if ( !dynamic_cast<const VisualObject*>( obj.get() ) )
+                continue; // skip not VisualObjects
             if ( !dynamic_cast<const U*>( obj.get() ) )
                 return false;
+        }
         res.emplace( info );
         return true;
     };
@@ -592,7 +598,10 @@ std::string SaveObjectMenuItem::isAvailable( const std::vector<std::shared_ptr<c
 
 bool SaveObjectMenuItem::action()
 {
-    const auto objs = getAllObjectsInTree<VisualObject>( &SceneRoot::get(), ObjectSelectivityType::Selected );
+    auto objs = getAllObjectsInTree<VisualObject>( &SceneRoot::get(), ObjectSelectivityType::Selected );
+    // erase not VisualObjects from objs
+    std::erase_if( objs, [&]( const auto & pObj )
+        { return !dynamic_cast<const VisualObject*>( pObj.get() ); } );
     if ( objs.empty() )
         return false;
     const auto optInfo = getSaveInfo( objs );
@@ -631,6 +640,7 @@ bool SaveObjectMenuItem::action()
             | IOFilters( baseFilters.begin() + firstFilterNum + 1, baseFilters.end() );
     }
 
+    auto name = objs[0]->name(); // won't be able to get after moving objs into callback
     saveFileDialogAsync( [objs = std::move( objs ), objType, settingsManager] ( const std::filesystem::path& savePath0 ) mutable
     {
         if ( savePath0.empty() )
@@ -681,7 +691,7 @@ bool SaveObjectMenuItem::action()
             };
         } );
     }, {
-        .fileName = objs[0]->name(),
+        .fileName = std::move( name ),
         .filters = std::move( filters ),
     } );
     return false;
@@ -741,7 +751,11 @@ bool SaveSelectedMenuItem::action()
 
         ProgressBar::orderWithMainThreadPostProcessing( "Saving selected", [savePath, rootShallowClone]()->std::function<void()>
         {
-            auto res = ObjectSave::toAnySupportedSceneFormat( *rootShallowClone, savePath, ProgressBar::callBackSetProgress );
+            auto res = ObjectSave::toAnySupportedSceneFormat( *rootShallowClone, savePath,
+                {
+                    .lengthUnit = UnitSettings::getActualModelLengthUnit(),
+                    .progress = ProgressBar::callBackSetProgress
+                } );
 
             return[savePath, res]()
             {
@@ -786,7 +800,11 @@ void SaveSceneAsMenuItem::saveScene_( const std::filesystem::path& savePath )
         if ( savePath.extension().empty() )
             return [] { showError( "File name is not set" ); };
 
-        auto res = ObjectSave::toAnySupportedSceneFormat( root, savePath, ProgressBar::callBackSetProgress );
+        auto res = ObjectSave::toAnySupportedSceneFormat( root, savePath,
+            {
+                .lengthUnit = UnitSettings::getActualModelLengthUnit(),
+                .progress = ProgressBar::callBackSetProgress
+            } );
 
         return[savePath, res]()
         {
@@ -800,14 +818,23 @@ void SaveSceneAsMenuItem::saveScene_( const std::filesystem::path& savePath )
 
 void SaveSceneAsMenuItem::saveSceneAs_()
 {
-    std::string defFileName;
-    if ( auto obj = getDepthFirstObject( &SceneRoot::get(), ObjectSelectivityType::Selectable ) )
-        defFileName = obj->name();
+    FileParameters params{ .filters = SceneSave::getFilters() };
+    auto savePath = SceneRoot::getScenePath();
+    if ( savePath.empty() )
+    {
+        if ( auto obj = getDepthFirstObject( &SceneRoot::get(), ObjectSelectivityType::Selectable ) )
+            params.fileName = obj->name();
+    }
+    else
+    {
+        params.baseFolder = savePath.parent_path();
+        params.fileName = utf8string( savePath.stem() );
+    }
     saveFileDialogAsync( [&] ( const std::filesystem::path& savePath )
     {
         if ( !savePath.empty() )
             saveScene_( savePath );
-    }, { .fileName = defFileName, .filters = SceneSave::getFilters() } );
+    }, params );
 }
 
 bool SaveSceneAsMenuItem::action()
@@ -847,10 +874,10 @@ CaptureScreenshotMenuItem::CaptureScreenshotMenuItem():
     }, CommandLoop::StartPosition::AfterWindowAppear );
 }
 
-void CaptureScreenshotMenuItem::drawDialog( float menuScaling, ImGuiContext* )
+void CaptureScreenshotMenuItem::drawDialog( ImGuiContext* )
 {
-    auto menuWidth = 200.0f * menuScaling;
-    if ( !ImGuiBeginWindow_( { .width = menuWidth, .menuScaling = menuScaling } ) )
+    auto menuWidth = 200.0f * UI::scale();
+    if ( !ImGuiBeginWindow_( { .width = menuWidth } ) )
         return;
 
     UI::drag<PixelSizeUnit>( "Width", resolution_.x, 1, 256 );

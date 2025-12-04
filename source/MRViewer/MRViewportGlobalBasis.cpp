@@ -1,15 +1,17 @@
 #include "MRViewportGlobalBasis.h"
+#include "MRViewport.h"
+#include "MRUIStyle.h"
+#include "MRColorTheme.h"
+#include "MRViewer.h"
+#include "MRViewerSignals.h"
+#include "ImGuiMenu.h"
 #include "MRMesh/MRCylinder.h"
 #include "MRMesh/MRObjectMesh.h"
-#include "MRViewport.h"
 #include "MRMesh/MRMesh.h"
 #include "MRSymbolMesh/MRObjectLabel.h"
 #include "MRMesh/MRPolyline.h"
 #include "MRMesh/MRPositionedText.h"
 #include "MRMesh/MRSceneColors.h"
-#include "MRColorTheme.h"
-#include "MRViewer.h"
-#include "ImGuiMenu.h"
 
 namespace
 {
@@ -39,11 +41,11 @@ ViewportGlobalBasis::ViewportGlobalBasis()
         child->setMesh( cylinder ); // same mesh for all objects (not really needed to keep it)
         child->setAncillary( true );
         child->setVisualizePropertyMask( MeshVisualizePropertyType::EnableShading, ViewportMask() );
-        
+
         auto label = std::make_shared<ObjectLabel>();
         label->setPivotPoint( Vector2f( 0.5f, 0.5f ) );
         label->setLabel( PositionedText( ( i == 0 ? "X" : ( i == 1 ? "Y" : "Z" ) ), Vector3f( 0, 0, 1.05f ) ) );
-        label->setFontHeight( menu ? 20 * menu->menu_scaling() : 20.0f );
+        label->setFontHeight( menu ? 20 * UI::scale() : 20.0f );
         label->setAncillary( true );
         child->addChild( label );
 
@@ -64,7 +66,7 @@ ViewportGlobalBasis::ViewportGlobalBasis()
     updateColors();
 
     connections_.emplace_back( ColorTheme::onChanged( updateColors ) );
-    connections_.emplace_back( getViewerInstance().postRescaleSignal.connect( [this] ( float, float )
+    connections_.emplace_back( getViewerInstance().signals().postRescaleSignal.connect( [this] ( float, float )
     {
         auto menu = getViewerInstance().getMenuPlugin();
         if ( !menu )
@@ -72,7 +74,7 @@ ViewportGlobalBasis::ViewportGlobalBasis()
         for ( const auto& child : axes_ )
             for ( const auto& label : child->children() )
                 if ( auto* visLabel = label->asType<ObjectLabel>() )
-                    visLabel->setFontHeight( 20.0f * menu->menu_scaling() );
+                    visLabel->setFontHeight( 20.0f * UI::scale() );
     } ) );
 
     creteGrids_();
@@ -172,10 +174,22 @@ void ViewportGlobalBasis::setVisible( bool on, ViewportMask vpMask /*= ViewportM
         child->setVisible( on, vpMask );
 }
 
+void ViewportGlobalBasis::setVisibilityMask( ViewportMask vpMask )
+{
+    for ( const auto& child : axesChildren() )
+        child->setVisibilityMask( vpMask );
+}
+
 void ViewportGlobalBasis::setGridVisible( bool on, ViewportMask vpMask /*= ViewportMask::all() */ )
 {
     for ( const auto& child : grids_ )
         child->setVisible( on, vpMask );
+}
+
+void ViewportGlobalBasis::setGridVisibilityMask( ViewportMask vpMask )
+{
+    for ( const auto& child : grids_ )
+        child->setVisibilityMask( vpMask );
 }
 
 void ViewportGlobalBasis::creteGrids_()
@@ -206,6 +220,8 @@ void ViewportGlobalBasis::creteGrids_()
     thinGrid->setFrontColor( Color::gray(), false );
     thickGrid->setFrontColor( Color::gray(), true );
     thickGrid->setFrontColor( Color::gray(), false );
+    thinGrid->setVisibilityMask( ViewportMask() );
+    thickGrid->setVisibilityMask( ViewportMask() );
 }
 
 void ViewportGlobalBasis::updateGridXfs_( const Viewport& vp ) const

@@ -93,6 +93,17 @@ ObjElement parseToken<ObjElement>( std::string_view line )
     }
 }
 
+// some elements should be considered as individual groups even if following same element
+// for example "usemtl" (actually if there are several sequential "usemtl" lines only last one makes sense)
+template <typename T>
+bool isSingleLineElement( T el )
+{
+    if constexpr ( std::is_same_v<T, ObjElement> )
+        return el == ObjElement::MaterialName;
+    else
+        return false;
+}
+
 template <>
 MtlElement parseToken<MtlElement>( std::string_view line )
 {
@@ -170,7 +181,7 @@ std::vector<ElementGroup<Element>> groupLines( const char* data, size_t, const s
     {
         std::string_view line( data + newlines[li], newlines[li + 1] - newlines[li + 0] );
         const auto element = parseToken<Element>( line );
-        if ( element != groups.back().element )
+        if ( element != groups.back().element || isSingleLineElement( element ) )
         {
             groups.back().end = li;
             groups.push_back( { element, li, 0 } );
@@ -344,6 +355,9 @@ Expected<MtlLibrary> loadMtlLibrary( const std::filesystem::path& path )
     const auto* data = mtlContent->data();
     const auto mtlSize = mtlContent->size();
 
+    if ( mtlSize == 0 )
+        return unexpected( "empty MTL file" );
+
     const auto newlines = splitByLines( data, mtlSize );
 
     const auto groups = groupLines<MtlElement>( data, mtlSize, newlines );
@@ -461,7 +475,9 @@ Expected<MeshLoad::NamedMesh> loadSingleModelFromObj(
         firstVert = faces[minFace].vertices.front();
     }
     if ( firstVert < 0 )
-        firstVert = int( points.size() ) - firstVert;
+        firstVert = int( points.size() ) + firstVert;
+    else
+        --firstVert;
     if ( firstVert < 0 || firstVert >= points.size() )
         return unexpected( "Out of bounds Vertex ID in OBJ-file" );
     haveColors = firstVert < colors.size();
@@ -488,7 +504,7 @@ Expected<MeshLoad::NamedMesh> loadSingleModelFromObj(
                 VertexRepr repr;
                 repr.vId = faces[i].vertices[v];
                 if ( repr.vId < 0 )
-                    repr.vId = int( points.size() ) - repr.vId;
+                    repr.vId = int( points.size() ) + repr.vId;
                 else
                     --repr.vId;
                 if ( repr.vId < 0 || repr.vId >= points.size() )
@@ -501,7 +517,7 @@ Expected<MeshLoad::NamedMesh> loadSingleModelFromObj(
                 {
                     repr.vtId = faces[i].textures[v];
                     if ( repr.vtId < 0 )
-                        repr.vtId = int( uvCoords.size() ) - repr.vtId;
+                        repr.vtId = int( uvCoords.size() ) + repr.vtId;
                     else
                         --repr.vtId;
                     if ( repr.vtId < 0 || repr.vtId >= uvCoords.size() )
@@ -602,14 +618,14 @@ Expected<MeshLoad::NamedMesh> loadSingleModelFromObj(
         VertexRepr repr;
         repr.vId = faces[fId].vertices[ind];
         if ( repr.vId < 0 )
-            repr.vId = int( points.size() ) - repr.vId;
+            repr.vId = int( points.size() ) + repr.vId;
         else
             --repr.vId;
         if ( ind < faces[fId].textures.size() )
         {
             repr.vtId = faces[fId].textures[ind];
             if ( repr.vtId < 0 )
-                repr.vtId = int( uvCoords.size() ) - repr.vtId;
+                repr.vtId = int( uvCoords.size() ) + repr.vtId;
             else
                 --repr.vtId;
         }

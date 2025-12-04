@@ -149,6 +149,7 @@ Expected<LoadedObject> makeObjectFromMeshFile( const std::filesystem::path& file
     MR_TIMER;
 
     VertColors colors;
+    FaceColors faceColors;
     VertUVCoords uvCoords;
     VertNormals normals;
     MeshTexture texture;
@@ -161,6 +162,7 @@ Expected<LoadedObject> makeObjectFromMeshFile( const std::filesystem::path& file
     {
         .edges = &edges,
         .colors = &colors,
+        .faceColors = &faceColors,
         .uvCoords = &uvCoords,
         .normals = returnOnlyMesh ? nullptr : &normals,
         .texture = &texture,
@@ -222,6 +224,8 @@ Expected<LoadedObject> makeObjectFromMeshFile( const std::filesystem::path& file
 
     const auto numVerts = mesh->points.size();
     const bool hasColors = colors.size() >= numVerts;
+    const auto numFaces = (int)mesh->topology.lastValidFace() + 1;
+    const bool hasFaceColors = faceColors.size() >= numFaces;
     const bool hasUV = uvCoords.size() >= numVerts;
     const bool hasTexture = !texture.pixels.empty();
 
@@ -229,10 +233,24 @@ Expected<LoadedObject> makeObjectFromMeshFile( const std::filesystem::path& file
     objectMesh->setName( utf8string( file.stem() ) );
     objectMesh->setMesh( std::make_shared<Mesh>( std::move( mesh.value() ) ) );
 
+    holesCount = int( objectMesh->numHoles() );
+    std::string warnings = makeWarningString( skippedFaceCount, duplicatedVertexCount, holesCount );
+
     if ( hasColors )
         objectMesh->setVertsColorMap( std::move( colors ) );
+    else if ( !colors.empty() )
+        warnings += fmt::format( "Ignoring too few ({}) colors loaded for a mesh with {} vertices.\n", colors.size(), numVerts );
+
+    if ( hasFaceColors )
+        objectMesh->setFacesColorMap( std::move( faceColors ) );
+    else if ( !faceColors.empty() )
+        warnings += fmt::format( "Ignoring too few ({}) colors loaded for a mesh with {} triangles.\n", faceColors.size(), numVerts );
+
     if ( hasUV )
         objectMesh->setUVCoords( std::move( uvCoords ) );
+    else if ( !uvCoords.empty() )
+        warnings += fmt::format( "Ignoring too few ({}) uv-coordinates loaded for a mesh with {} vertices.\n", uvCoords.size(), numVerts );
+
     if ( hasTexture )
         objectMesh->setTextures( { std::move( texture ) } );
 
@@ -240,15 +258,10 @@ Expected<LoadedObject> makeObjectFromMeshFile( const std::filesystem::path& file
         objectMesh->setVisualizeProperty( true, MeshVisualizePropertyType::Texture, ViewportMask::all() );
     else if ( hasColors )
         objectMesh->setColoringType( ColoringType::VertsColorMap );
+    else if ( hasFaceColors )
+        objectMesh->setColoringType( ColoringType::PrimitivesColorMap );
 
     objectMesh->setXf( xf );
-
-    holesCount = int( objectMesh->numHoles() );
-    std::string warnings = makeWarningString( skippedFaceCount, duplicatedVertexCount, holesCount );
-        if ( !colors.empty() && !hasColors )
-        warnings += fmt::format( "Ignoring too few ({}) colors loaded for a mesh with {} vertices.\n", colors.size(), numVerts );
-        if ( !uvCoords.empty() && !hasUV )
-        warnings += fmt::format( "Ignoring too few ({}) uv-coordinates loaded for a mesh with {} vertices.\n", uvCoords.size(), numVerts );
 
     return LoadedObject{ .obj = std::move( objectMesh ), .warnings = std::move( warnings ) };
 }
@@ -354,6 +367,15 @@ Expected<LoadedObjects> loadObjectFromFile( const std::filesystem::path& filenam
         return unexpectedOperationCanceled();
 
     Expected<LoadedObjects> result = unexpectedUnsupportedFileExtension();
+    auto tryOtherLoaders = [&result]()
+    {
+        if ( result.has_value() )
+            return false; // already loaded
+        // true if previous load attempt failed in the very beginning on extension or format check
+        return result.error() == stringUnsupportedFileExtension()
+            || result.error().starts_with( stringUnsupportedFileFormat() );
+    };
+
     bool loadedFromSceneFile = false;
 
     auto ext = std::string( "*" ) + utf8string( filename.extension().u8string() );
@@ -367,7 +389,7 @@ Expected<LoadedObjects> loadObjectFromFile( const std::filesystem::path& filenam
             return unexpected( std::move( objTree.error() ) );
 
         objTree->obj->setName( utf8string( filename.stem() ) );
-        result = LoadedObjects{ .objs = { objTree->obj }, .warnings = std::move( objTree->warnings ) };
+        result = LoadedObjects{ .objs = { objTree->obj }, .warnings = std::move( objTree->warnings ), .lengthUnit = objTree->lengthUnit };
         loadedFromSceneFile = true;
     }
     else if ( const auto filter = findFilter( ObjectLoad::getFilters(), ext ) )
@@ -376,7 +398,7 @@ Expected<LoadedObjects> loadObjectFromFile( const std::filesystem::path& filenam
         result = loader( filename, callback );
     }
     // no else to support same extensions in object and mesh loaders
-    if ( !result.has_value() && result.error() != stringOperationCanceled() )
+    if ( tryOtherLoaders() )
     {
         auto maybe = makeObjectFromMeshFile( filename, callback );
         if ( maybe )
@@ -388,7 +410,7 @@ Expected<LoadedObjects> loadObjectFromFile( const std::filesystem::path& filenam
             result = unexpected( std::move( maybe.error() ) );
     }
 
-    if ( !result.has_value() && result.error() != stringOperationCanceled() )
+    if ( tryOtherLoaders() )
     {
         auto objectLines = makeObjectLinesFromFile( filename, callback );
         if ( objectLines.has_value() )
@@ -401,7 +423,7 @@ Expected<LoadedObjects> loadObjectFromFile( const std::filesystem::path& filenam
             result = unexpected( std::move( objectLines.error() ) );
     }
 
-    if ( !result.has_value() && result.error() != stringOperationCanceled() )
+    if ( tryOtherLoaders() )
     {
         auto objectPoints = makeObjectPointsFromFile( filename, callback );
         if ( objectPoints.has_value() )
@@ -414,7 +436,7 @@ Expected<LoadedObjects> loadObjectFromFile( const std::filesystem::path& filenam
             result = unexpected( std::move( objectPoints.error() ) );
     }
 
-    if ( !result.has_value() && result.error() != stringOperationCanceled() )
+    if ( tryOtherLoaders() )
     {
         auto objectDistanceMap = makeObjectDistanceMapFromFile( filename, callback );
         if ( objectDistanceMap.has_value() )
@@ -427,7 +449,7 @@ Expected<LoadedObjects> loadObjectFromFile( const std::filesystem::path& filenam
             result = unexpected( std::move( objectDistanceMap.error() ) );
     }
 
-    if ( !result.has_value() && result.error() != stringOperationCanceled() )
+    if ( tryOtherLoaders() )
     {
         auto objectGcode = makeObjectGcodeFromFile( filename, callback );
         if ( objectGcode.has_value() )
@@ -552,9 +574,24 @@ Expected<LoadedObject> deserializeObjectTreeFromFolder( const std::filesystem::p
         return unexpected( readRes.error() );
     }
     auto root = readRes.value();
+    if ( auto formatVersion = root["FormatVersion"]; formatVersion.isNumeric() && formatVersion.asDouble() >= 2 )
+    {
+        return unexpected( "Unsupported version of scene file. Please update your application." );
+    }
+
+    LoadedObject res;
+    if ( auto lengthUnits = root["LengthUnits"]; lengthUnits.isString() )
+    {
+        auto lengthUnitsStr = lengthUnits.asString();
+        for ( int i = 0; i < (int)LengthUnit::_count; ++i )
+            if ( lengthUnitsStr == getUnitInfo( (LengthUnit)i ).prettyName )
+            {
+                res.lengthUnit = (LengthUnit)i;
+                break;
+            }
+    }
 
     auto typeTreeSize = root["Type"].size();
-    LoadedObject res;
     for (int i = typeTreeSize-1;i>=0;--i)
     {
         const auto& type = root["Type"][unsigned( i )];

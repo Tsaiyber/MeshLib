@@ -47,7 +47,7 @@ public:
         {
             if ( skipedCursorPosY > cursorPosY )
                 ImGui::Dummy( ImVec2( 0, skipedCursorPosY - cursorPosY - lastSpacingY ) );
-            
+
             drawFunc();
 
             cursorPosY = ImGui::GetCursorPosY();
@@ -77,16 +77,14 @@ private:
 
 ////////////////////////////////////////////////////
 
-void SceneObjectsListDrawer::draw( float height, float scaling )
+void SceneObjectsListDrawer::draw( float height )
 {
-    menuScaling_ = scaling;
-
-    ImGui::BeginChild( "SceneObjectsList", ImVec2( -1, height ), false );
+    ImGui::BeginChild( "SceneObjectsList", ImVec2( -1, height ), ImGuiChildFlags_None );
     updateSceneWindowScrollIfNeeded_();
     drawObjectsList_();
     // any click on empty space below Scene Tree removes object selection
     const auto& selected = SceneCache::getAllObjects<Object, ObjectSelectivityType::Selected>();
-    ImGui::BeginChild( "EmptySpace" );
+    ImGui::BeginChild( "EmptySpace", ImGui::GetContentRegionAvail() );
     if ( ImGui::IsWindowHovered() && ImGui::IsMouseClicked( 0 ) )
     {
         for ( const auto& s : selected )
@@ -391,6 +389,11 @@ void SceneObjectsListDrawer::drawObjectsList_()
     skippableRenderer.endDraw();
 }
 
+float SceneObjectsListDrawer::getDrawDropTargetHeight_() const
+{
+    return 4.f * UI::scale();
+}
+
 bool SceneObjectsListDrawer::drawObject_( Object& object, const std::string& uniqueStr, int /*depth*/ )
 {
     const bool hasRealChildren = !object.isAncillary() && objectHasSelectableChildren( object );
@@ -404,7 +407,7 @@ bool SceneObjectsListDrawer::drawSkippedObject_( Object& object, const std::stri
 {
     const bool hasRealChildren = !object.isAncillary() && objectHasSelectableChildren( object );
     return ImGui::TreeNodeUpdateNextOpen( ImGui::GetCurrentWindow()->GetID( objectLineStrId_( object, uniqueStr ).c_str() ),
-                    ( hasRealChildren ? ImGuiTreeNodeFlags_DefaultOpen : 0 ) );
+                    ( hasRealChildren ? sDefaultGroupState : 0 ) );
 }
 
 void SceneObjectsListDrawer::drawObjectVisibilityCheckbox_( Object& object, const std::string& uniqueStr )
@@ -416,7 +419,7 @@ void SceneObjectsListDrawer::drawObjectVisibilityCheckbox_( Object& object, cons
     assert( ctx );
     auto window = ctx->CurrentWindow;
     assert( window );
-    auto diff = ImGui::GetStyle().FramePadding.y - cCheckboxPadding * menuScaling_;
+    auto diff = ImGui::GetStyle().FramePadding.y - cCheckboxPadding * UI::scale();
     ImGui::SetCursorPosY( ImGui::GetCursorPosY() + diff );
     if ( UI::checkbox( ( "##VisibilityCheckbox" + uniqueStr ).c_str(), &isVisible ) )
     {
@@ -447,10 +450,10 @@ bool SceneObjectsListDrawer::drawObjectCollapsingHeader_( Object& object, const 
 
     ImGui::PushStyleVar( ImGuiStyleVar_FrameBorderSize, 0.0f );
 
-    const ImGuiTreeNodeFlags flags = 
-        ImGuiTreeNodeFlags_SpanAvailWidth | 
-        ImGuiTreeNodeFlags_Framed | 
-        ( hasRealChildren ? ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_Bullet ) |
+    const ImGuiTreeNodeFlags flags =
+        ImGuiTreeNodeFlags_SpanAvailWidth |
+        ImGuiTreeNodeFlags_Framed |
+        ( hasRealChildren ? ImGuiTreeNodeFlags_OpenOnArrow | sDefaultGroupState : ImGuiTreeNodeFlags_Bullet ) |
         ( isSelected ? ImGuiTreeNodeFlags_Selected : 0 );
 
     const bool isOpen = collapsingHeader_( objectLineStrId_( object, uniqueStr ).c_str(), flags );
@@ -462,7 +465,7 @@ bool SceneObjectsListDrawer::drawObjectCollapsingHeader_( Object& object, const 
     makeDragDropTarget_( object, false, false, uniqueStr );
 
     if ( ImGui::IsItemHovered() )
-        processItemClick_( object, selected );    
+        processItemClick_( object, selected );
 
     return isOpen;
 }
@@ -479,7 +482,7 @@ void SceneObjectsListDrawer::processItemClick_( Object& object, const std::vecto
     }
 
     bool pressed = !isSelected && ( ImGui::IsMouseClicked( 0 ) || ImGui::IsMouseClicked( 1 ) );
-    bool released = isSelected && !dragTrigger_ && !clickTrigger_ && ImGui::IsMouseReleased( 0 );
+    bool released = isSelected && !needDragDropTarget_() && !clickTrigger_ && ImGui::IsMouseReleased( 0 );
 
     if ( pressed )
         clickTrigger_ = true;
@@ -500,8 +503,6 @@ void SceneObjectsListDrawer::makeDragDropSource_( const std::vector<std::shared_
 
     if ( ImGui::BeginDragDropSource( ImGuiDragDropFlags_AcceptNoDrawDefaultRect | ImGuiDragDropFlags_SourceNoDisableHover ) )
     {
-        dragTrigger_ = true;
-
         std::vector<Object*> vectorObjPtr;
         for ( auto& ptr : payload )
             vectorObjPtr.push_back( ptr.get() );
@@ -537,7 +538,7 @@ void SceneObjectsListDrawer::makeDragDropTarget_( Object& target, bool before, b
         auto width = ImGui::GetContentRegionAvail().x;
         ImGui::ColorButton( ( "##InternalDragDropArea" + uniqueStr ).c_str(),
             ImVec4( 0, 0, 0, 0 ),
-            0, ImVec2( width, 4 * menuScaling_ ) );
+            0, ImVec2( width, 4 * UI::scale() ) );
     }
     if ( ImGui::BeginDragDropTarget() )
     {
@@ -547,7 +548,7 @@ void SceneObjectsListDrawer::makeDragDropTarget_( Object& target, bool before, b
             auto width = ImGui::GetContentRegionAvail().x;
             ImGui::ColorButton( ( "##ColoredInternalDragDropArea" + uniqueStr ).c_str(),
                 ImGui::GetStyle().Colors[ImGuiCol_ButtonHovered],
-                0, ImVec2( width, 4 * menuScaling_ ) );
+                0, ImVec2( width, 4 * UI::scale() ) );
         }
         if ( const ImGuiPayload* payload = ImGui::AcceptDragDropPayload( "_TREENODE" ) )
         {
@@ -579,7 +580,6 @@ void SceneObjectsListDrawer::reorderSceneIfNeeded_()
         }
     }
     sceneReorderCommand_ = {};
-    dragTrigger_ = false;
 }
 
 void SceneObjectsListDrawer::updateSceneWindowScrollIfNeeded_()
@@ -592,9 +592,9 @@ void SceneObjectsListDrawer::updateSceneWindowScrollIfNeeded_()
     scrollInfo.relativeMousePos = ImGui::GetMousePos().y - window->Pos.y;
     scrollInfo.absLinePosRatio = window->ContentSize.y == 0.0f ? 0.0f : ( scrollInfo.relativeMousePos + window->Scroll.y ) / window->ContentSize.y;
 
-    if ( nextFrameFixScroll_ )
+    if ( dragModeTrigger_ )
     {
-        nextFrameFixScroll_ = false;
+        dragModeTrigger_ = false;
         window->Scroll.y = std::clamp( prevScrollInfo_.absLinePosRatio * window->ContentSize.y - prevScrollInfo_.relativeMousePos, 0.0f, window->ScrollMax.y );
     }
     else if ( dragObjectsMode_ )
@@ -613,23 +613,39 @@ void SceneObjectsListDrawer::updateSceneWindowScrollIfNeeded_()
             getViewerInstance().incrementForceRedrawFrames();
         }
     }
+    else if ( nextFrameFixScroll_ )
+    {
+        nextFrameFixScroll_ = false;
+        float absPos = prevScrollInfo_.absLinePosRatio * window->ContentSize.y - window->Scroll.y;
+        float addScroll = 0.0f;
+        if ( absPos < 15 * UI::scale() )
+            addScroll = absPos - 15 * UI::scale();
+        else if ( absPos > window->Size.y - 15 * UI::scale() )
+            addScroll = absPos - ( window->Size.y - 15 * UI::scale() );
+        auto newScroll = std::clamp( window->Scroll.y + addScroll, 0.0f, window->ScrollMax.y );
+        if ( newScroll != window->Scroll.y )
+        {
+            window->Scroll.y = newScroll;
+            getViewerInstance().incrementForceRedrawFrames();
+        }
+    }
 
     const ImGuiPayload* payloadCheck = ImGui::GetDragDropPayload();
     bool dragModeNow = payloadCheck && std::string_view( payloadCheck->DataType ) == "_TREENODE";
     if ( dragModeNow && !dragObjectsMode_ )
     {
         dragObjectsMode_ = true;
-        nextFrameFixScroll_ = true;
+        dragModeTrigger_ = true;
         getViewerInstance().incrementForceRedrawFrames( 2, true );
     }
     else if ( !dragModeNow && dragObjectsMode_ )
     {
         dragObjectsMode_ = false;
-        nextFrameFixScroll_ = true;
+        dragModeTrigger_ = true;
         getViewerInstance().incrementForceRedrawFrames( 2, true );
     }
 
-    if ( !nextFrameFixScroll_ )
+    if ( !dragModeTrigger_ )
         prevScrollInfo_ = scrollInfo;
 }
 
@@ -652,27 +668,45 @@ std::vector<Object*> SceneObjectsListDrawer::getPreSelection_( Object* meshclick
 
     size_t start{ 0 };
     std::vector<Object*> res;
+    size_t count = 0;
     if ( firstIt < clickedIt )
     {
         start = std::distance( all_objects.begin(), firstIt );
-        res.resize( std::distance( firstIt, clickedIt + 1 ) );
+        count = std::distance( firstIt, clickedIt + 1 );
     }
     else
     {
         start = std::distance( all_objects.begin(), clickedIt );
-        res.resize( std::distance( clickedIt, firstIt + 1 ) );
+        count = std::distance( clickedIt, firstIt + 1 );
     }
-    for ( int i = 0; i < res.size(); ++i )
+
+    auto checkVisibleInList = [&] ( size_t i )
     {
-        res[i] = all_objects[start + i].get();
+        Object* obj = all_objects[i]->parent();
+        while ( obj && obj != SceneRoot::getSharedPtr().get() )
+        {
+            const std::string uniqueStr = std::to_string( intptr_t( obj ) );
+            spdlog::info( "{}, {}", i, ImGui::GetCurrentWindow()->GetID(objectLineStrId_(*obj, uniqueStr).c_str()));
+            bool isOpen = ImGui::TreeNodeGetOpen( ImGui::GetCurrentWindow()->GetID( objectLineStrId_( *obj, uniqueStr ).c_str() ) );
+            if ( !isOpen )
+                return false;
+            obj = obj->parent();
+        }
+        return true;
+    };
+    for ( size_t i = 0; i < count; ++i )
+    {
+        if ( !checkVisibleInList( start + i ) )
+            continue;
+        res.push_back( all_objects[start + i].get() );
     }
     return res;
 }
 
 void SceneObjectsListDrawer::updateSelection_( Object* objPtr, const std::vector<std::shared_ptr<Object>>& selected, const std::vector<std::shared_ptr<Object>>& all )
 {
-    auto newSelection = getPreSelection_( objPtr, ImGui::GetIO().KeyShift, ImGui::GetIO().KeyCtrl, selected, all );
-    if ( ImGui::GetIO().KeyCtrl )
+    auto newSelection = getPreSelection_( objPtr, ImGui::GetIO().KeyShift, ImGui::IsKeyDown( UI::getImGuiModPrimaryCtrl() ), selected, all );
+    if ( ImGui::IsKeyDown( UI::getImGuiModPrimaryCtrl() ) )
     {
         for ( auto& sel : newSelection )
         {

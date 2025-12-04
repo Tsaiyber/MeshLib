@@ -29,7 +29,9 @@
 #include "MRColorTheme.h"
 #include "MRViewport.h"
 #include "MRImGuiImage.h"
-#include "imgui_internal.h"
+#include "ImGuiHelpers.h"
+#include "MRRibbonFontHolder.h"
+#include <imgui_internal.h>
 
 #ifndef MRVIEWER_NO_VOXELS
 #include "MRVoxels/MRObjectVoxels.h"
@@ -38,11 +40,11 @@
 namespace MR
 {
 
-void RibbonSceneObjectsListDrawer::draw( float height, float scaling )
+void RibbonSceneObjectsListDrawer::draw( float height )
 {
     currentElementId_ = 1;
     lastDrawnSibling_.clear();
-    SceneObjectsListDrawer::draw( height, scaling );
+    SceneObjectsListDrawer::draw( height );
 }
 
 void RibbonSceneObjectsListDrawer::initRibbonMenu( RibbonMenu* ribbonMenu )
@@ -59,7 +61,7 @@ void RibbonSceneObjectsListDrawer::drawCustomObjectPrefixInScene_( const Object&
 
     const auto& fontManager = ribbonMenu_->getFontManager();
 
-    auto imageSize = ImGui::GetFrameHeight() - 2 * menuScaling_;
+    auto imageSize = ImGui::GetFrameHeight() - 2 * UI::scale();
     std::string name = obj.typeName();
     if ( opened && name == Object::TypeName() )
         name += "_open";
@@ -69,16 +71,14 @@ void RibbonSceneObjectsListDrawer::drawCustomObjectPrefixInScene_( const Object&
 
     if ( !imageIcon )
     {
-        auto font = fontManager.getFontByType( RibbonFontManager::FontType::Icons );
-        font->Scale = fontManager.getFontSizeByType( RibbonFontManager::FontType::Default ) /
+        const float fontScale = fontManager.getFontSizeByType( RibbonFontManager::FontType::Default ) /
             fontManager.getFontSizeByType( RibbonFontManager::FontType::Icons );
-        ImGui::PushFont( font );
+        RibbonFontHolder font( RibbonFontManager::FontType::Icons, fontScale );
 
         ImGui::SetCursorPosY( ImGui::GetCursorPosY() + ( imageSize - ImGui::GetFontSize() ) * 0.5f );
         ImGui::Text( "%s", getSceneItemIconByTypeName_( obj.typeName() ) );
 
-        ImGui::PopFont();
-        font->Scale = 1.0f;
+        font.popFont();
     }
     else
     {
@@ -217,7 +217,7 @@ bool RibbonSceneObjectsListDrawer::drawTreeOpenedState_( Object& object, bool le
 
     const ImGuiTreeNodeFlags flags =
         ImGuiTreeNodeFlags_AllowOverlap |
-        ( !leaf ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_Bullet );
+        ( !leaf ? sDefaultGroupState : ImGuiTreeNodeFlags_Bullet );
 
 
     auto startScreenPos = ImGui::GetCursorScreenPos();
@@ -226,7 +226,7 @@ bool RibbonSceneObjectsListDrawer::drawTreeOpenedState_( Object& object, bool le
     // window->WorkRect.Max.x hardcoded inside ImGui as limit of width, so manual change it here
     auto window = ImGui::GetCurrentContext()->CurrentWindow;
     float storedWorkRectMaxX = window->WorkRect.Max.x;
-    window->WorkRect.Max.x = window->DC.CursorPos.x + cFrameHeight - 2 * menuScaling_;
+    window->WorkRect.Max.x = window->DC.CursorPos.x + cFrameHeight - 2 * UI::scale();
     const bool isOpen = collapsingHeader_( objectLineStrId_( object, uniqueStr ).c_str(), flags );
     window->WorkRect.Max.x = storedWorkRectMaxX;
 
@@ -263,19 +263,19 @@ void RibbonSceneObjectsListDrawer::drawObjectLine_( Object& object, const std::s
     {
         auto rect = context->LastItemData.Rect;
         drawList->PushClipRect( window->InnerRect.Min, window->InnerRect.Max );
-        drawList->AddRect( rect.Min, rect.Max, ImGui::GetColorU32( ImGuiCol_ButtonActive ), style.FrameRounding, 0, 2 * menuScaling_ );
+        drawList->AddRect( rect.Min, rect.Max, ImGui::GetColorU32( ImGuiCol_ButtonActive ), style.FrameRounding, 0, 2 * UI::scale() );
         drawList->PopClipRect();
 
     }
     ImGui::PopStyleColor( !isSelected ? 2 : 1 );
     ImGui::PopStyleVar();
-    
+
     const auto& selected = SceneCache::getAllObjects<Object, ObjectSelectivityType::Selected>();
 
     makeDragDropSource_( selected );
     makeDragDropTarget_( object, false, false, uniqueStr );
 
-    context->LastItemData.InFlags |= ImGuiItemFlags_AllowOverlap; // needed so hover check respect overlap
+    context->LastItemData.ItemFlags |= ImGuiItemFlags_AllowOverlap; // needed so hover check respect overlap
 
     bool frameHovered = ImGui::IsItemHovered();
     if ( frameHovered )
@@ -310,7 +310,7 @@ void RibbonSceneObjectsListDrawer::drawEyeButton_( Object& object, const std::st
     bool isVisible = object.isVisible( vp.id );
 
     const float cFrameHeight = ImGui::GetFrameHeight();
-    const float cImageHeight = 24 * menuScaling_;
+    const float cImageHeight = 24 * UI::scale();
     auto* imageIcon = RibbonIcons::findByName( isVisible ? "Ribbon Scene Show all" : "Ribbon Scene Hide all", cFrameHeight, RibbonIcons::ColorType::White, RibbonIcons::IconType::RibbonItemIcon );
     if ( !imageIcon )
     {
@@ -400,8 +400,8 @@ void RibbonSceneObjectsListDrawer::drawHierarhyLine_( const Vector2f& startScree
     else
         pos2.y = lastDrawnSibling_[depth].screenPosY - cFrameHeight;
 
-    drawList->AddLine( pos0, pos1, Color::gray().getUInt32(), menuScaling_ );
-    drawList->AddLine( pos1, pos2, Color::gray().getUInt32(), menuScaling_ );
+    drawList->AddLine( pos0, pos1, Color::gray().getUInt32(), UI::scale() );
+    drawList->AddLine( pos1, pos2, Color::gray().getUInt32(), UI::scale() );
 
     if ( skipped )
         lastDrawnSibling_.resize( depth - 1 );

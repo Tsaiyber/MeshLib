@@ -25,6 +25,7 @@
 #include <gdcmTagKeywords.h>
 #pragma warning(pop)
 
+#include <variant>
 
 namespace MR
 {
@@ -307,6 +308,10 @@ Expected<DicomVolumeT<T>> loadDicomFile( const std::filesystem::path& file, cons
     MR_TIMER;
     if ( !reportProgress( cb, 0.0f ) )
         return unexpectedOperationCanceled();
+
+    auto dicomStatus = isDicomFile( file );
+    if ( !dicomStatus )
+        return unexpected( stringUnsupportedFileFormat() + " for DICOM: " + utf8string( file ) );
 
     T vol{};
     vol.voxelSize = Vector3f();

@@ -1,8 +1,11 @@
 #include "MRMouseController.h"
 #include "MRViewer.h"
+#include "MRViewerSignals.h"
+#include "MRMakeSlot.h"
 #include "MRGLMacro.h"
 #include "MRGladGlfw.h"
 #include "MRViewport.h"
+#include "MRShortcutManager.h"
 #include "MRMesh/MRConstants.h"
 #include "MRMesh/MRQuaternion.h"
 #include "MRMesh/MRObjectMesh.h"
@@ -75,11 +78,15 @@ std::string MouseController::getControlString( const MouseControlKey& key )
 {
     std::string res;
     if ( key.mod & GLFW_MOD_ALT )
-        res += "Alt+";
+        res += ShortcutManager::getModifierString( GLFW_MOD_ALT );
     if ( key.mod & GLFW_MOD_CONTROL )
-        res += "Ctrl+";
+        res += ShortcutManager::getModifierString( GLFW_MOD_CONTROL );
     if ( key.mod & GLFW_MOD_SHIFT )
-        res += "Shift+";
+        res += ShortcutManager::getModifierString( GLFW_MOD_SHIFT );
+    if ( key.mod & GLFW_MOD_SUPER )
+        res += ShortcutManager::getModifierString( GLFW_MOD_SUPER );
+    if ( !res.empty() )
+        res += "+";
     switch ( key.btn )
     {
     case MouseButton::Left:
@@ -117,18 +124,33 @@ void MouseController::connect()
 {
     downState_.resize( 3 );
     auto& viewer = getViewerInstance();
-    viewer.mouseDownSignal.connect( MAKE_SLOT( &MouseController::preMouseDown_ ), boost::signals2::at_front );
-    viewer.mouseDownSignal.connect( MAKE_SLOT( &MouseController::mouseDown_ ) );
-    viewer.mouseUpSignal.connect( MAKE_SLOT( &MouseController::preMouseUp_ ), boost::signals2::at_front );
-    viewer.dragDropSignal.connect( MAKE_SLOT( &MouseController::preDragDrop_ ), boost::signals2::at_front );
-    viewer.mouseMoveSignal.connect( MAKE_SLOT( &MouseController::preMouseMove_ ), boost::signals2::at_front );
-    viewer.mouseScrollSignal.connect( MAKE_SLOT( &MouseController::mouseScroll_ ) );
-    viewer.cursorEntranceSignal.connect( MAKE_SLOT( &MouseController::cursorEntrance_ ) );
+    viewer.signals().mouseDownSignal.connect( MAKE_SLOT( &MouseController::preMouseDown_ ), boost::signals2::at_front );
+    viewer.signals().mouseDownSignal.connect( MAKE_SLOT( &MouseController::mouseDown_ ) );
+    viewer.signals().mouseUpSignal.connect( MAKE_SLOT( &MouseController::preMouseUp_ ), boost::signals2::at_front );
+    viewer.signals().dragDropSignal.connect( MAKE_SLOT( &MouseController::preDragDrop_ ), boost::signals2::at_front );
+    viewer.signals().mouseMoveSignal.connect( MAKE_SLOT( &MouseController::preMouseMove_ ), boost::signals2::at_front );
+    viewer.signals().mouseScrollSignal.connect( MAKE_SLOT( &MouseController::mouseScroll_ ) );
+    viewer.signals().cursorEntranceSignal.connect( MAKE_SLOT( &MouseController::cursorEntrance_ ) );
 }
 
 void MouseController::cursorEntrance_( bool entered )
 {
     isCursorInside_ = entered;
+
+    if ( entered )
+    {
+        // resync internal mouse position with the actual OS cursor when re-entering the window
+        MR::Viewer& viewer = getViewerInstance();
+        if ( viewer.window )
+        {
+            prevMousePos_ = currentMousePos_;
+
+            Vector2d pos;
+            glfwGetCursorPos( viewer.window, &pos.x, &pos.y );
+            pos *= viewer.pixelRatio;
+            currentMousePos_ = Vector2i( pos );
+        }
+    }
 }
 
 int MouseController::getMouseConflicts()
@@ -138,8 +160,8 @@ int MouseController::getMouseConflicts()
         if ( keyToMouseAndMod( key ).btn == MouseButton::Left )
             // Return relevant connections number
             return
-                int( getViewerInstance().mouseDownSignal.num_slots() ) +
-                int( getViewerInstance().dragStartSignal.num_slots() );
+                int( getViewerInstance().signals().mouseDownSignal.num_slots() ) +
+                int( getViewerInstance().signals().dragStartSignal.num_slots() );
     return 0;
 }
 
@@ -150,7 +172,7 @@ bool MouseController::preMouseDown_( MouseButton btn, int mod )
         downMousePos_ = currentMousePos_;
 
     // Click behavior is enabled only if it has listeners
-    if ( getViewerInstance().mouseClickSignal.num_slots() > 0 )
+    if ( getViewerInstance().signals().mouseClickSignal.num_slots() > 0 )
     {
         clickButton_ = btn; // Support click by one button only
         // No pending button yet - so that camera operation starts only if mouseDown had not been handled by other tool

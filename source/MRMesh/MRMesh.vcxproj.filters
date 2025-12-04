@@ -1041,6 +1041,9 @@
     <ClInclude Include="MRAngleMeasurementObject.h">
       <Filter>Source Files\DataModel\Measurements</Filter>
     </ClInclude>
+    <ClInclude Include="MRPointMeasurementObject.h">
+      <Filter>Source Files\DataModel\Measurements</Filter>
+    </ClInclude>
     <ClInclude Include="MRUnorientedTriangle.h">
       <Filter>Source Files\Mesh</Filter>
     </ClInclude>
@@ -1360,6 +1363,18 @@
     </ClInclude>
     <ClInclude Include="MRObjectComparableWithReference.h">
       <Filter>Source Files\DataModel</Filter>
+    </ClInclude>
+    <ClInclude Include="MRUnsigned.h">
+      <Filter>Source Files\Basic</Filter>
+    </ClInclude>
+    <ClInclude Include="MRTelemetry.h">
+      <Filter>Source Files\System</Filter>
+    </ClInclude>
+    <ClInclude Include="MRUnitInfo.h">
+      <Filter>Source Files\Basic</Filter>
+    </ClInclude>
+    <ClInclude Include="MRObjectSaveSettings.h">
+      <Filter>Source Files\IO</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -2008,6 +2023,9 @@
     <ClCompile Include="MRAngleMeasurementObject.cpp">
       <Filter>Source Files\DataModel\Measurements</Filter>
     </ClCompile>
+    <ClCompile Include="MRPointMeasurementObject.cpp">
+      <Filter>Source Files\DataModel\Measurements</Filter>
+    </ClCompile>
     <ClCompile Include="MRPointsComponents.cpp">
       <Filter>Source Files\Components</Filter>
     </ClCompile>
@@ -2221,6 +2239,21 @@
     </ClCompile>
     <ClCompile Include="MRPartMappingAdapters.cpp">
       <Filter>Source Files\Mesh</Filter>
+    </ClCompile>
+    <ClCompile Include="MRTelemetry.cpp">
+      <Filter>Source Files\System</Filter>
+    </ClCompile>
+    <ClCompile Include="MRProjectionMeshAttribute.cpp">
+      <Filter>Source Files\MeshAlgorithm</Filter>
+    </ClCompile>
+    <ClCompile Include="MRChangeMeshDataAction.cpp">
+      <Filter>Source Files\History</Filter>
+    </ClCompile>
+    <ClCompile Include="MRMeshSave3mf.cpp">
+      <Filter>Source Files\IO</Filter>
+    </ClCompile>
+    <ClCompile Include="MRUnitInfo.cpp">
+      <Filter>Source Files\Basic</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -1,5 +1,6 @@
 #include "MRViewerSettingsManager.h"
 #include "MRUnitSettings.h"
+#include "MRViewer/MRUIStyle.h"
 #include "MRViewport.h"
 #include "MRViewer.h"
 #include "MRColorTheme.h"
@@ -27,6 +28,7 @@
 namespace
 {
 const std::string cOrthographicParamKey = "orthographic";
+const std::string cShowRotationPivotParamKey = "showRotationPivot";
 const std::string cFlatShadingParamKey = "flatShading"; // Legacy
 const std::string cShadingModeParamKey = "defaultMeshShading";
 const MR::Config::Enum cShadingModeEnum = { "AutoDetect", "Smooth", "Flat" }; // SceneSettings::ShadingMode
@@ -191,7 +193,6 @@ void ViewerSettingsManager::resetSettings( Viewer& viewer )
 #else
     ColorTheme::setupByTypeName( ColorTheme::Type::Default, ColorTheme::getPresetName( ColorTheme::getPreset() ) );
 #endif
-    ColorTheme::apply();
 
     // lastExtentions_.clear();
 
@@ -225,6 +226,8 @@ void ViewerSettingsManager::loadSettings( Viewer& viewer )
             bool gridVisible = visible;
             if ( val[cGlobalBasisGridVisibleKey].isBool() )
                 gridVisible = val[cGlobalBasisGridVisibleKey].asBool();
+
+            gridVisible &= visible; // do not allow showing grid without basis because it is disabled by `viewer.globalBasis`
             viewer.globalBasis->setGridVisible( gridVisible );
             if ( visible )
                 CommandLoop::appendCommand( [&] () { viewer.preciseFitDataViewport(ViewportMask::all(),{0.9f}); });
@@ -237,6 +240,12 @@ void ViewerSettingsManager::loadSettings( Viewer& viewer )
             viewer.globalBasis->setAxesProps( val[cGlobalBasisScaleKey].asFloat(), viewer.globalBasis->getAxesWidth() );
         }
     }
+
+    if ( cfg.hasBool( cShowRotationPivotParamKey ) && viewer.rotationSphere )
+    {
+        viewer.rotationSphere->setVisible( cfg.getBool( cShowRotationPivotParamKey ) );
+    }
+
     viewport.setParameters( params );
 
     viewer.glPickRadius = uint16_t( loadInt( cGLPickRadiusParamKey, viewer.glPickRadius ) );
@@ -390,7 +399,7 @@ void ViewerSettingsManager::loadSettings( Viewer& viewer )
         if ( cfg.hasJsonValue( cRibbonNotificationAllowedTags ) )
             ribbonMenu->getRibbonNotifier().allowedTagMask = NotificationTagMask( cfg.getJsonValue( cRibbonNotificationAllowedTags ).asUInt() );
 
-        auto sceneSize = cfg.getVector2i( cRibbonLeftWindowSize, Vector2i{ int( 310 * ribbonMenu->menu_scaling() ), 0 } );
+        auto sceneSize = cfg.getVector2i( cRibbonLeftWindowSize, Vector2i{ int( 310 * UI::scale() ), 0 } );
         // it is important to be called after `cMainWindowMaximized` block
         // as far as scene size is clamped by window size in each frame
         CommandLoop::appendCommand( [ribbonMenu, sceneSize]
@@ -411,7 +420,6 @@ void ViewerSettingsManager::loadSettings( Viewer& viewer )
         // setup default in this case
         ColorTheme::setupByTypeName( ColorTheme::Type::Default, ColorTheme::getPresetName( ColorTheme::Preset::Default ) );
     }
-    ColorTheme::apply();
 
     Json::Value lastExtentions = cfg.getJsonValue( lastExtensionsParamKey );
     if ( lastExtentions.isArray() )
@@ -491,9 +499,9 @@ void ViewerSettingsManager::loadSettings( Viewer& viewer )
                 return ret;
             }();
             auto targetIt = map.find( loadString( cUnitsLenUnit, "" ) );
-            UnitSettings::setUiLengthUnit( targetIt == map.end() ? LengthUnit::mm : targetIt->second == LengthUnit::_count ? std::nullopt : std::optional( targetIt->second ), true );
+            UnitSettings::setUiLengthUnit( targetIt == map.end() ? LengthUnit::millimeters : targetIt->second == LengthUnit::_count ? std::nullopt : std::optional( targetIt->second ), true );
             auto sourceIt = map.find( loadString( cUnitsModelLenUnit, "" ) );
-            UnitSettings::setModelLengthUnit( ( sourceIt == map.end() || targetIt->second == LengthUnit::_count ) ? std::nullopt : std::optional( targetIt->second ) );
+            UnitSettings::setModelLengthUnit( ( sourceIt == map.end() || sourceIt->second == LengthUnit::_count ) ? std::nullopt : std::optional( sourceIt->second ) );
         }
 
         { // Thousands separator.
@@ -561,6 +569,11 @@ void ViewerSettingsManager::saveSettings( const Viewer& viewer )
         else
             globalBasis[cGlobalBasisScaleKey] = viewer.globalBasis->getAxesLength( viewport.id );
         cfg.setJsonValue( cGlobalBasisKey, globalBasis );
+    }
+
+    if ( viewer.rotationSphere )
+    {
+        cfg.setBool( cShowRotationPivotParamKey, viewer.rotationSphere->isVisible( viewport.id ) );
     }
 
     saveInt( cGLPickRadiusParamKey, viewer.glPickRadius );

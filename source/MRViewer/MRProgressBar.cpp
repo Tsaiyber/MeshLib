@@ -12,8 +12,10 @@
 #include "MRCommandLoop.h"
 #include "MRColorTheme.h"
 #include "MRRibbonFontManager.h"
+#include "MRRibbonFontHolder.h"
 #include "MRRibbonMenu.h"
 #include "MRViewer/MRUITestEngine.h"
+#include "MRImGuiMultiViewport.h"
 #include "imgui_internal.h"
 #include "MRPch/MRSpdlog.h"
 #include "MRPch/MRWasm.h"
@@ -142,7 +144,7 @@ void ProgressBarImpl::initialize_( std::string title, int taskCount, std::functi
         title_ = std::move( title );
     }
 
-    frameRequest_.reset();    
+    frameRequest_.reset();
     operationStartTime_ = std::chrono::system_clock::now();
     if ( postInit )
         postInit();
@@ -206,9 +208,9 @@ bool ProgressBarImpl::tryRunWithSehHandler_( const std::function<bool()>& task )
 namespace ProgressBar
 {
 
-void setup( float scaling )
+void setup()
 {
-    auto& instance = ProgressBarImpl::ProgressBarImpl::instance();
+    auto& instance = ProgressBarImpl::instance();
 
     if ( instance.deferredOpenPopup_ && instance.setupId_ != ImGuiID( -1 ) )
     {
@@ -222,9 +224,9 @@ void setup( float scaling )
     }
 
     instance.setupId_ = ImGui::GetID( "###GlobalProgressBarPopup" );
-    const Vector2f windowSize( 440.0f * scaling, 144.0f * scaling );
+    const Vector2f windowSize( 440.0f * UI::scale(), 144.0f * UI::scale() );
     auto& viewer = getViewerInstance();
-    ImGui::SetNextWindowPos( 0.5f * ( Vector2f( viewer.framebufferSize ) - windowSize ), ImGuiCond_Appearing );
+    ImGuiMV::SetNextWindowPosMainViewport( 0.5f * ( Vector2f( viewer.framebufferSize ) - windowSize ), ImGuiCond_Appearing );
     ImGui::SetNextWindowSize( windowSize, ImGuiCond_Always );
     if ( ImGui::BeginModalNoAnimation( "###GlobalProgressBarPopup", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar ) )
     {
@@ -234,11 +236,9 @@ void setup( float scaling )
         instance.frameRequest_.reset();
 
 #if !defined( __EMSCRIPTEN__ ) || defined( __EMSCRIPTEN_PTHREADS__ )
-        auto smallFont = RibbonFontManager::getFontByTypeStatic( RibbonFontManager::FontType::Small );
-        if ( smallFont )
-            ImGui::PushFont( smallFont );
+        RibbonFontHolder smallFont( RibbonFontManager::FontType::Small );
         ImGui::PushStyleColor( ImGuiCol_Text, StyleConsts::ProgressBar::textColor.getUInt32() );
-        ImGui::SetCursorPos( ImVec2( 32.0f * scaling, 20.0f * scaling ) );
+        ImGui::SetCursorPos( ImVec2( 32.0f * UI::scale(), 20.0f * UI::scale() ) );
         {
             std::unique_lock lock( instance.mutex_ );
             if ( instance.overrideTaskName_ )
@@ -257,17 +257,16 @@ void setup( float scaling )
             }
         }
         ImGui::PopStyleColor();
-        if ( smallFont )
-            ImGui::PopFont();
+        smallFont.popFont();
 
         auto progress = (float)instance.progress_;
-        ImGui::SetCursorPos( ImVec2( 32.0f * scaling, 56.0f * scaling ) );
-        UI::progressBar( scaling, progress, ImVec2( 380.0f * scaling, 12.0f * scaling ) );
+        ImGui::SetCursorPos( ImVec2( 32.0f * UI::scale(), 56.0f * UI::scale() ) );
+        UI::progressBar( progress, ImVec2( 380.0f * UI::scale(), 12.0f * UI::scale() ) );
 
         if ( instance.allowCancel_ )
         {
-            ImVec2 btnSize = ImVec2( 90.0f * scaling, 28.0f * scaling );
-            ImGui::SetCursorPos( ImVec2( ( windowSize.x - btnSize.x ) * 0.5f, 92.0f * scaling ) );
+            ImVec2 btnSize = ImVec2( 90.0f * UI::scale(), 28.0f * UI::scale() );
+            ImGui::SetCursorPos( ImVec2( ( windowSize.x - btnSize.x ) * 0.5f, 92.0f * UI::scale() ) );
             if ( !instance.canceled_ )
             {
                 if ( UI::button( "Cancel", btnSize, ImGuiKey_Escape ) )

@@ -9,13 +9,15 @@
 
 #include "MRViewerPlugin.h"
 #include "MRViewerEventsListener.h"
-#include "MRStatePlugin.h"
 #include "MRNotificationType.h"
 #include "MRSignalCombiners.h"
 #include "MRShowModal.h"
+#include "imgui.h"
 #include "MRMesh/MRIRenderObject.h" //only for BasicUiRenderTask::BackwardPassParams
 #include "MRMesh/MRFlagOperators.h"
 #include "MRMesh/MRBox.h"
+#include "MRMesh/MRColor.h"
+#include <optional>
 #include <unordered_map>
 
 // Forward declarations
@@ -121,18 +123,6 @@ protected:
   std::optional<std::pair<std::string, Vector4f>> storedColor_;
   Vector4f getStoredColor_( const std::string& str, const Color& defaultColor ) const;
 
-  mutable struct PluginsCache
-  {
-      // if cache is valid do nothing, otherwise accumulate all custom plugins in tab sections and sort them by special string
-      void validate( const std::vector<ViewerPlugin*>& viewerPlugins );
-      // finds enabled custom plugin, nullptr if none is
-      StateBasePlugin* findEnabled() const;
-      const std::vector<StateBasePlugin*>& getTabPlugins( StatePluginTabs tab ) const;
-  private:
-      std::array<std::vector<StateBasePlugin*>, size_t( StatePluginTabs::Count )> sortedCustomPlufins_;
-      std::vector<ViewerPlugin*> allPlugins_; // to validate
-  } pluginsCache_;
-
   std::string searchPluginsString_;
 
   std::vector<std::shared_ptr<MR::MeshModifier>> modifiers_;
@@ -196,11 +186,6 @@ public:
 
   // Can be overwritten by `callback_draw_viewer_window`
   MRVIEWER_API virtual void draw_viewer_window();
-
-  MRVIEWER_API void draw_mr_menu();
-
-  // Can be overwritten by `callback_draw_viewer_menu`
-  //virtual void draw_viewer_menu();
 
   // Can be overwritten by `callback_draw_custom_window`
   virtual void draw_custom_window() {}
@@ -266,10 +251,10 @@ public:
   void make_color_selector( std::vector<std::shared_ptr<ObjectT>> selectedVisualObjs, const char* label,
                             std::function<Vector4f( const ObjectT* )> getter,
                             std::function<void( ObjectT*, const Vector4f& )> setter );
-  template<typename ObjType>
+  template<typename ObjType,typename ValueT>
   void make_width( std::vector<std::shared_ptr<VisualObject>> selectedVisualObjs, const char* label,
-                   std::function<float( const ObjType* )> getter,
-                   std::function<void( ObjType*, const float& )> setter );
+                   std::function<ValueT( const ObjType* )> getter,
+                   std::function<void( ObjType*, const ValueT& )> setter );
 
   void make_light_strength( std::vector<std::shared_ptr<VisualObject>> selectedVisualObjs, const char* label,
     std::function<float( const VisualObject* )> getter,
@@ -283,8 +268,6 @@ public:
   void make_points_discretization( std::vector<std::shared_ptr<VisualObject>> selectedVisualObjs, const char* label,
   std::function<int( const ObjectPointsHolder* )> getter,
   std::function<void( ObjectPointsHolder*, const int& )> setter );
-
-  MRVIEWER_API void draw_custom_plugins();
 
   std::shared_ptr<ShortcutManager> getShortcutManager() { return shortcutManager_; };
 
@@ -326,8 +309,10 @@ public:
   NameTagClickSignal nameTagClickSignal;
   // Behaves as if the user clicked the object name tag, by invoking `nameTagClickSignal`.
   MRVIEWER_API bool simulateNameTagClick( Object& object, NameTagSelectionMode mode );
+  // This version uses the currently held keyboard modifiers instead of a custom `mode`.
+  MRVIEWER_API bool simulateNameTagClickWithKeyboardModifiers( Object& object );
 
-  using DrawSceneUiSignal = boost::signals2::signal<void( float menuScaling, ViewportId viewportId, UiRenderParams::UiTaskList& tasks )>;
+  using DrawSceneUiSignal = boost::signals2::signal<void( ViewportId viewportId, UiRenderParams::UiTaskList& tasks )>;
   // This is called every frame for every viewport. Use this to draw UI bits on top of the scene.
   DrawSceneUiSignal drawSceneUiSignal;
 
@@ -398,8 +383,6 @@ protected:
     // called in ImGuiMenu::postRescale_()
     MRVIEWER_API virtual void rescaleStyle_();
 
-    MRVIEWER_API virtual void addMenuFontRanges_( ImFontGlyphRangesBuilder& builder ) const;
-
     MRVIEWER_API float drawSelectionInformation_();
     MRVIEWER_API void drawFeaturePropertiesEditor_( const std::shared_ptr<Object>& object );
 
@@ -416,10 +399,6 @@ protected:
 
     MRVIEWER_API virtual bool drawTransformContextMenu_( const std::shared_ptr<Object>& /*selected*/ ) { return false; }
 
-    void draw_history_block_();
-
-    void draw_open_recent_button_();
-
     // A virtual function for drawing of the dialog with shortcuts. It can be overriden in the inherited classes
     MRVIEWER_API virtual void drawShortcutsWindow_();
     // returns width of items in Scene Info window
@@ -431,7 +410,7 @@ protected:
         MRVIEWER_API void preRenderViewport( ViewportId viewport ) override;
         MRVIEWER_API void postRenderViewport( ViewportId viewport ) override;
         MRVIEWER_API BasicUiRenderTask::BackwardPassParams beginBackwardPass( ViewportId viewport, UiRenderParams::UiTaskList& tasks ) override;
-        MRVIEWER_API void finishBackwardPass( const BasicUiRenderTask::BackwardPassParams& params ) override;
+        MRVIEWER_API void finishBackwardPass( ViewportId viewport, const BasicUiRenderTask::BackwardPassParams& params ) override;
 
         // Which things are blocked by our `renderUi()` calls.
         BasicUiRenderTask::InteractionMask consumedInteractions{};

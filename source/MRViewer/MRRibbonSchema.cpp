@@ -3,6 +3,9 @@
 #include "MRImGui.h"
 #include "MRRibbonMenu.h"
 #include "MRViewer.h"
+#include "MRSceneCache.h"
+#include "MRStatePlugin.h"
+#include "MRUIStyle.h"
 #include "MRMesh/MRSystemPath.h"
 #include "MRMesh/MRStringConvert.h"
 #include "MRMesh/MRSerializer.h"
@@ -11,7 +14,6 @@
 #include "MRMesh/MRTimer.h"
 #include "MRPch/MRSpdlog.h"
 #include "MRPch/MRJson.h"
-#include "MRSceneCache.h"
 
 namespace MR
 {
@@ -104,7 +106,7 @@ bool RibbonSchemaHolder::delItem( const std::shared_ptr<RibbonMenuItem>& item )
 std::vector<RibbonSchemaHolder::SearchResult> RibbonSchemaHolder::search( const std::string& searchStr, const SearchParams& params )
 {
     std::vector<std::pair<SearchResult, SearchResultWeight>> rawResult;
-    
+
     if ( searchStr.empty() )
         return {};
     auto words = split( searchStr, " " );
@@ -113,7 +115,7 @@ std::vector<RibbonSchemaHolder::SearchResult> RibbonSchemaHolder::search( const 
     {
         if ( sourceStr.empty() )
             return { 1.0f, 1.f };
-        
+
         auto sourceWords = split( sourceStr, " " );
         std::erase_if( sourceWords, [] ( const auto& str ) { return str.empty(); } );
         if ( sourceWords.empty() )
@@ -291,7 +293,7 @@ std::vector<RibbonSchemaHolder::SearchResult> RibbonSchemaHolder::search( const 
         return std::tuple( aWeight, aOrderWeight ) < std::tuple( bWeight, bOrderWeight );
     } );
 
-    // filter results with error threshold as 3x minimum caption error 
+    // filter results with error threshold as 3x minimum caption error
     if ( !rawResult.empty() && rawResult[0].second.captionWeight < maxWeight / 3.f )
     {
         const float maxWeightNew = rawResult[0].second.captionWeight * 3.f;
@@ -413,9 +415,9 @@ void RibbonSchemaLoader::readMenuItemsList( const Json::Value& root, MenuItemsLi
     recalcItemSizes();
 }
 
-float sCalcSize( const ImFont* font, const char* begin, const char* end )
+float sCalcSize( ImFont* font, float fontSize, const char* begin, const char* end )
 {
-    float res = font->CalcTextSizeA( font->FontSize, FLT_MAX, -1.0f, begin, end ).x;
+    float res = font->CalcTextSizeA( fontSize, FLT_MAX, -1.0f, begin, end ).x;
     // Round
     // FIXME: This has been here since Dec 2015 (7b0bf230) but down the line we want this out.
     // FIXME: Investigate using ceilf or e.g.
@@ -424,7 +426,7 @@ float sCalcSize( const ImFont* font, const char* begin, const char* end )
     return float( int( res + +0.99999f ) );
 }
 
-SplitCaptionInfo sAutoSplit( const std::string& str, float maxWidth,const ImFont* font, float baseSize )
+SplitCaptionInfo sAutoSplit( const std::string& str, float fontSize, float maxWidth, ImFont* font, float baseSize )
 {
     if ( baseSize < maxWidth )
         return { { str, baseSize } };
@@ -449,10 +451,10 @@ SplitCaptionInfo sAutoSplit( const std::string& str, float maxWidth,const ImFont
 
     std::vector<float> substrWidth;
     for ( const auto& s : substr )
-        substrWidth.push_back( sCalcSize( font, &s.front(), &s.back() + 1 ) );
+        substrWidth.push_back( sCalcSize( font, fontSize, &s.front(), &s.back() + 1 ) );
 
     constexpr const char cSpace[] = " ";
-    const float spaceWidth = sCalcSize( font, &cSpace[0], &cSpace[1] );
+    const float spaceWidth = sCalcSize( font, fontSize, &cSpace[0], &cSpace[1] );
     size_t index1 = 0;
     size_t index2 = substr.size() - 1;
 
@@ -490,13 +492,14 @@ void RibbonSchemaLoader::recalcItemSizes()
     auto menu = getViewerInstance().getMenuPlugin();
     if ( !menu )
         return;
-    ImFont* font = RibbonFontManager::getFontByTypeStatic( RibbonFontManager::FontType::Small );
+    auto [font, fontSize] = RibbonFontManager::getFontAndSizeByTypeStatic( RibbonFontManager::FontType::Small );
     if ( !font )
         return;
+    fontSize *= UI::scale();
 
-    const float cMaxTextWidth = 
-        RibbonFontManager::getFontSizeByType( RibbonFontManager::FontType::Icons ) * 
-        4 * menu->menu_scaling();
+    const float cMaxTextWidth =
+        RibbonFontManager::getFontSizeByType( RibbonFontManager::FontType::Icons ) *
+        4 * UI::scale();
 
     auto& schema = RibbonSchemaHolder::schema();
     for ( auto& item : schema.items )
@@ -507,8 +510,8 @@ void RibbonSchemaLoader::recalcItemSizes()
         auto& sizes = item.second.captionSize;
 
         const auto& caption = item.second.caption.empty() ? item.second.item->name() : item.second.caption;
-        sizes.baseSize = sCalcSize( font, caption.data(), caption.data() + caption.size() );
-        sizes.splitInfo = sAutoSplit( caption, cMaxTextWidth, font, sizes.baseSize );
+        sizes.baseSize = sCalcSize( font, fontSize, caption.data(), caption.data() + caption.size() );
+        sizes.splitInfo = sAutoSplit( caption, fontSize, cMaxTextWidth, font, sizes.baseSize );
     }
 }
 
@@ -735,8 +738,8 @@ void RibbonSchemaLoader::readUIJson_( const Json::Value& itemsStructure ) const
         }
         else
         {
-            auto it = std::find_if( 
-                RibbonSchemaHolder::schema().tabsOrder.begin(), 
+            auto it = std::find_if(
+                RibbonSchemaHolder::schema().tabsOrder.begin(),
                 RibbonSchemaHolder::schema().tabsOrder.end(),
                 [&] ( const RibbonTab& tnp ) { return tnp.name == tabName.asString(); } );
 

@@ -1,5 +1,6 @@
 #pragma once
-#include "MRStreamOperators.h"
+
+#include "config.h"
 
 #ifdef MRMESH_NO_GTEST
 

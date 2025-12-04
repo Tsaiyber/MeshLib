@@ -4,7 +4,10 @@
 #include "MRAffineXf3.h"
 #include "MRId.h"
 #include "MRVector.h"
+#include "MRUnitInfo.h"
+#include "MRColor.h"
 #include <cassert>
+#include <optional>
 
 namespace MR
 {
@@ -26,17 +29,26 @@ struct SaveSettings
     /// optional per-vertex color to save with the geometry
     const VertColors * colors = nullptr;
 
+    /// per-face colors for meshes, per-undirected-edge colors for polylines, unused for point clouds and other
+    const std::vector<Color> * primitiveColors = nullptr;
+
     /// optional per-vertex uv coordinate to save with the geometry
     const VertUVCoords * uvMap = nullptr;
 
     /// optional texture to save with the geometry
     const MeshTexture * texture = nullptr;
 
-    /// used to save texture and material in some formats (obj)
+    /// the name of file without extension to save texture in some formats (e.g. .OBJ, .PLY)
     std::string materialName = "Default";
 
     /// this transformation can optionally be applied to all vertices (points) of saved object
     const AffineXf3d * xf = nullptr;
+
+    /// units of input coordinates and transformation, to be serialized if the format supports it
+    std::optional<LengthUnit> lengthUnit;
+
+    /// the color of whole object
+    std::optional<Color> solidColor;
 
     /// to report save progress and cancel saving if user desires
     ProgressCallback progress;

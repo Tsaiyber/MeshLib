@@ -1,11 +1,11 @@
 #pragma once
 
 #include "MRCommonPlugins/exports.h"
-#include "MRMesh/MRViewportId.h"
 #include "MRViewer/MRRibbonMenuItem.h"
+#include "MRMesh/MRViewportId.h"
+#include "MRMesh/MRSignal.h"
 
 #include <boost/signals2/connection.hpp>
-#include <boost/signals2/signal.hpp>
 
 namespace MR
 {
@@ -30,7 +30,7 @@ public:
         // Register a new button. They will be sorted by `order` (then by name) ascending, left-to-right.
         // The `onClick` callback will be called late, make sure it doens't dangle the captures.
         // `active` only affects how the button is rendered.
-        virtual void addButton( float order, std::string name, bool active, std::string icon, std::function<void()> onClick ) = 0;
+        virtual void addButton( float order, std::string name, bool active, std::string icon, std::string tooltip, std::function<void()> onClick ) = 0;
     };
 
     virtual void providedViewportWidgets( ViewportWidgetInterface& in ) = 0;

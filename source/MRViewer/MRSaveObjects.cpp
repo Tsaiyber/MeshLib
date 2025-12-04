@@ -49,10 +49,17 @@ Expected<void> saveObjectToFile( const Object& obj, const std::filesystem::path&
     SaveSettings saveSettings
     {
         .xf = ( xf == AffineXf3d() ) ? nullptr : &xf,
+        .lengthUnit = UnitSettings::getActualModelLengthUnit(),
         .progress = settings.callback
     };
-    Expected<void> result;
+    if ( auto vis = obj.asType<VisualObject>() )
+    {
+        // if selected and unselected are the same color, then save it
+        if ( vis->getFrontColor( true ) == vis->getFrontColor( false ) )
+            saveSettings.solidColor = vis->getFrontColor( true );
+    }
 
+    Expected<void> result;
     if ( auto objPoints = obj.asType<ObjectPoints>() )
     {
         if ( objPoints->pointCloud() )
@@ -83,6 +90,8 @@ Expected<void> saveObjectToFile( const Object& obj, const std::filesystem::path&
         {
             if ( objMesh->getColoringType() == ColoringType::VertsColorMap )
                 saveSettings.colors = &objMesh->getVertsColorMap();
+            else if ( objMesh->getColoringType() == ColoringType::PrimitivesColorMap )
+                saveSettings.primitiveColors = &objMesh->getFacesColorMap().vec_;
             if ( objMesh->getUVCoords().size() >= objMesh->mesh()->topology.lastValidVert() )
                 saveSettings.uvMap = &objMesh->getUVCoords();
             if ( !objMesh->getTexture().pixels.empty() )
@@ -114,11 +123,9 @@ Expected<void> saveObjectToFile( const Object& obj, const std::filesystem::path&
         VdbVolume vol = objVoxels->vdbVolume();
         if ( ext == u8".dcm" )
         {
-            // always save DICOM in meters because the format supports units information
-            if ( auto maybeUserScale = UnitSettings::getUiLengthUnit() )
-            {
-                vol.voxelSize *= getUnitInfo( *maybeUserScale ).conversionFactor / getUnitInfo( LengthUnit::meters ).conversionFactor;
-            }
+            // consider that all data inside DICOM is in meters, convert our internal units into meters
+            if ( auto unit = UnitSettings::getActualModelLengthUnit(); unit && *unit != LengthUnit::meters )
+                vol.voxelSize *= getUnitInfo( *unit ).conversionFactor / getUnitInfo( LengthUnit::meters ).conversionFactor;
         }
 
         result = VoxelsSave::toAnySupportedFormat( vol, filename, settings.callback );

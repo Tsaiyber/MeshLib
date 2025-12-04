@@ -18,26 +18,34 @@
     <ClCompile Include="MRBoxTests.cpp" />
     <ClCompile Include="MRChunkIterator.cpp" />
     <ClCompile Include="MRContoursCutTests.cpp" />
+    <ClCompile Include="MRCPRTests.cpp" />
     <ClCompile Include="MREdgeLengthMeshTests.cpp" />
     <ClCompile Include="MRExampleTest.cpp" />
     <ClCompile Include="MRExtractIsolinesTests.cpp" />
     <ClCompile Include="MRFeaturesTests.cpp" />
+    <ClCompile Include="MRGridSamplingTests.cpp" />
+    <ClCompile Include="MRICPTests.cpp" />
     <ClCompile Include="MRLaplacianTests.cpp" />
     <ClCompile Include="MRMarchingCubesTests.cpp" />
     <ClCompile Include="MRMeshComponentsTests.cpp" />
+    <ClCompile Include="MRMeshDecimateTests.cpp" />
     <ClCompile Include="MRMeshIntersectTests.cpp" />
     <ClCompile Include="MRMeshLoadSaveTest.cpp" />
     <ClCompile Include="MRMeshMeshDistanceTests.cpp" />
     <ClCompile Include="MRMeshTests.cpp" />
     <ClCompile Include="MRMeshTopologyTests.cpp" />
+    <ClCompile Include="MRMultiwayICPTests.cpp" />
     <ClCompile Include="MRNaNTest.cpp" />
+    <ClCompile Include="MRObjectTests.cpp" />
     <ClCompile Include="MRPdfTests.cpp" />
     <ClCompile Include="MRPointCloudVariadicOffsetTests.cpp" />
     <ClCompile Include="MRPolyline2IntersectTests.cpp" />
     <ClCompile Include="MRPolylineTests.cpp" />
     <ClCompile Include="MRPolylineTrimWithPlane.cpp" />
     <ClCompile Include="MRPrecisePredicatesTests.cpp" />
+    <ClCompile Include="MRSerializeTests.cpp" />
     <ClCompile Include="MRSpdlog.cpp" />
+    <ClCompile Include="MRStreamOperatorsTests.cpp" />
     <ClCompile Include="MRSurfacePathTests.cpp" />
     <ClCompile Include="MRTBBTests.cpp" />
     <ClCompile Include="MRTestApp.cpp" />
@@ -50,6 +58,7 @@
     <ClCompile Include="MRConvexHull.cpp" />
     <ClCompile Include="MRCylinderApproximation.cpp" />
     <ClCompile Include="MRSolidOfRevolution.cpp" />
+    <ClCompile Include="MRFillingSurface.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\thirdparty\pybind11nonlimitedapi_stubs.vcxproj">
@@ -122,7 +131,6 @@
       <ConformanceMode>true</ConformanceMode>
       <TreatWarningAsError>true</TreatWarningAsError>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(ProjectDir)..\..\thirdparty;$(ProjectDir)\..\..\thirdparty\imgui\</AdditionalIncludeDirectories>
-      <DebugInformationFormat>OldStyle</DebugInformationFormat>
       <PrecompiledHeaderFile>$(ProjectDir)..\MRPch\MRPch.h</PrecompiledHeaderFile>
       <ForcedIncludeFiles>$(ProjectDir)..\MRPch\MRPch.h</ForcedIncludeFiles>
       <PrecompiledHeaderOutputFile>$(SolutionDir)TempOutput\MRPch\$(Platform)\$(Configuration)\MRPch.pch</PrecompiledHeaderOutputFile>
@@ -144,7 +152,6 @@
       <ConformanceMode>true</ConformanceMode>
       <TreatWarningAsError>true</TreatWarningAsError>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(ProjectDir)..\..\thirdparty;$(ProjectDir)\..\..\thirdparty\imgui\</AdditionalIncludeDirectories>
-      <DebugInformationFormat>OldStyle</DebugInformationFormat>
       <PrecompiledHeaderFile>$(ProjectDir)..\MRPch\MRPch.h</PrecompiledHeaderFile>
       <ForcedIncludeFiles>$(ProjectDir)..\MRPch\MRPch.h</ForcedIncludeFiles>
       <PrecompiledHeaderOutputFile>$(SolutionDir)TempOutput\MRPch\$(Platform)\$(Configuration)\MRPch.pch</PrecompiledHeaderOutputFile>

@@ -85,6 +85,15 @@ MR_CMAKE_OPTIONS="\
   -D CMAKE_BUILD_TYPE=Release \
 "
 
+if [ "${MR_EMSCRIPTEN}" != "ON" ] ; then
+  if [ -n "${CMAKE_C_COMPILER}" ] ; then
+    MR_CMAKE_OPTIONS="${MR_CMAKE_OPTIONS} -D CMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
+  fi
+  if [ -n "${CMAKE_CXX_COMPILER}" ] ; then
+    MR_CMAKE_OPTIONS="${MR_CMAKE_OPTIONS} -D CMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+  fi
+fi
+
 if command -v ninja >/dev/null 2>&1 ; then
   MR_CMAKE_OPTIONS="${MR_CMAKE_OPTIONS} -G Ninja"
 fi
@@ -129,11 +138,15 @@ pushd "${MESHLIB_THIRDPARTY_BUILD_DIR}"
 if [ "${MR_EMSCRIPTEN}" == "ON" ]; then
   # build libjpeg-turbo separately
   CMAKE_OPTIONS="${MR_CMAKE_OPTIONS}" ${SCRIPT_DIR}/thirdparty/libjpeg-turbo.sh ${MESHLIB_THIRDPARTY_DIR}/libjpeg-turbo
+  # build MbedTLS separately
+  CMAKE_OPTIONS="${MR_CMAKE_OPTIONS}" ${SCRIPT_DIR}/thirdparty/mbedtls.sh ${MESHLIB_THIRDPARTY_DIR}/mbedtls
 
   cmake -S ${MESHLIB_THIRDPARTY_DIR} -B . ${MR_CMAKE_OPTIONS}
   cmake --build . -j ${NPROC}
   cmake --install .
 
+  # build Eigen separately
+  CMAKE_OPTIONS="${MR_CMAKE_OPTIONS}" ${SCRIPT_DIR}/thirdparty/eigen.sh ${MESHLIB_THIRDPARTY_DIR}/eigen
   # build libE57Format separately
   CMAKE_OPTIONS="${MR_CMAKE_OPTIONS}" ${SCRIPT_DIR}/thirdparty/libE57Format.sh ${MESHLIB_THIRDPARTY_DIR}/libE57Format
   # build OpenVDB separately
@@ -142,18 +155,10 @@ else
   cmake -S ${MESHLIB_THIRDPARTY_DIR} -B . ${MR_CMAKE_OPTIONS}
   cmake --build . -j ${NPROC}
   cmake --install .
+
+  # build clip separately
+  CMAKE_OPTIONS="${MR_CMAKE_OPTIONS}" ${SCRIPT_DIR}/thirdparty/clip.sh ${MESHLIB_THIRDPARTY_DIR}/clip
 fi
 popd
-
-# copy libs (some of them are handled by their `cmake --install`, but some are not)
-echo "Copying thirdparty libs.."
-if [ "${MR_EMSCRIPTEN}" = "ON" ]; then
-  LIB_SUFFIX="*.a"
-elif [[ $OSTYPE == 'darwin'* ]]; then
-  LIB_SUFFIX="*.dylib"
-else
-  LIB_SUFFIX="*.so"
-fi
-cp "${MESHLIB_THIRDPARTY_BUILD_DIR}"/${LIB_SUFFIX} "${MESHLIB_THIRDPARTY_ROOT_DIR}/lib/"
 
 printf "\rThirdparty build script successfully finished. Required libs located in ./lib folder. You could run ./scripts/build_source.sh\n\n"

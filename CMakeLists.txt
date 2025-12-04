@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/Modules")
 include(DefaultOptions)
 include(ConfigureVcpkg)
 
@@ -8,6 +8,16 @@ IF(NOT MR_EMSCRIPTEN AND NOT APPLE AND EXISTS /usr/bin/time)
   # print compile time of each translation unit in the CSV format (user time, system time, command)
   set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "/usr/bin/time -f \",%U,%S,%C\" -a -o compile_timings.txt")
   set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "/usr/bin/time -f \",%U,%S,%C\" -a -o link_timings.txt")
+ENDIF()
+
+IF(APPLE)
+    # assume built-in pthreads on macOS
+    # https://stackoverflow.com/a/54606606/7325599
+    set(CMAKE_THREAD_LIBS_INIT "-lpthread")
+    set(CMAKE_HAVE_THREADS_LIBRARY 1)
+    set(CMAKE_USE_WIN32_THREADS_INIT 0)
+    set(CMAKE_USE_PTHREADS_INIT 1)
+    set(THREADS_PREFER_PTHREAD_FLAG ON)
 ENDIF()
 
 project(MeshLib CXX)
@@ -137,45 +147,11 @@ IF(MESHLIB_PYTHON_SUPPORT AND NOT MR_EMSCRIPTEN)
   IF(APPLE)
     # TODO: revise
     link_directories(${HOMEBREW_PREFIX}/opt/python@${MESHLIB_PYTHON_VERSION}/Frameworks/Python.framework/Versions/${MESHLIB_PYTHON_VERSION}/lib/)
-    find_package(pybind11 REQUIRED)
   ENDIF()
 ENDIF()
 
 set(PROJECT_SOURCE_DIR ./source)
 include_directories(${PROJECT_SOURCE_DIR})
-
-IF(NOT MR_EMSCRIPTEN)
-  IF(NOT TARGET JsonCpp::JsonCpp)
-    IF(MSVC)
-      find_package(JsonCpp REQUIRED)
-    ELSE()
-      # fix compatibility with Ubuntu 22.04
-      if(CMAKE_VERSION VERSION_GREATER_EQUAL 4.0)
-        set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
-      endif()
-      find_package(jsoncpp)
-      IF(NOT JsonCpp_FOUND)
-        find_package(PkgConfig REQUIRED)
-        pkg_check_modules(jsoncpp REQUIRED IMPORTED_TARGET jsoncpp)
-        IF(CMAKE_VERSION VERSION_LESS 3.18)
-          set_target_properties(PkgConfig::jsoncpp PROPERTIES IMPORTED_GLOBAL TRUE)
-        ENDIF()
-        add_library(JsonCpp::JsonCpp ALIAS PkgConfig::jsoncpp)
-      ENDIF()
-    ENDIF()
-  ENDIF()
-
-  find_package(fmt)
-  find_package(spdlog REQUIRED)
-  find_package(TBB REQUIRED)
-  IF(spdlog_VERSION VERSION_GREATER_EQUAL "1.7" AND fmt_VERSION VERSION_GREATER_EQUAL "7.0")
-    add_compile_definitions(SPDLOG_FMT_EXTERNAL)
-  ENDIF()
-  add_compile_definitions(SPDLOG_COMPILED_LIB SPDLOG_SHARED_LIB)
-ENDIF() # NOT MR_EMSCRIPTEN
-
-include_directories(${MESHLIB_THIRDPARTY_DIR}/parallel-hashmap)
-include_directories(${MESHLIB_THIRDPARTY_DIR}/mrbind-pybind11/include)
 
 IF(NOT $ENV{MR_VERSION} STREQUAL "")
   set(MESHLIB_VERSION $ENV{MR_VERSION})
@@ -184,24 +160,25 @@ ELSE()
 ENDIF()
 message("version: ${MESHLIB_VERSION}")
 
+set(MESHLIB_LIB_SUBDIR "${MESHLIB_PROJECT_NAME}" CACHE STRING "Subdirectory in the library directory to place the MeshLib libraries at")
 IF(MESHLIB_USE_VCPKG)
   # use OS-agnostic directory structure for vcpkg
   set(MR_BIN_DIR bin)
   set(MR_INCLUDE_DIR include/MeshLib)
-  set(MR_MAIN_LIB_DIR lib/${MESHLIB_PROJECT_NAME})
-  set(MR_PY_LIB_DIR lib/${MESHLIB_PROJECT_NAME}/meshlib)
+  set(MR_MAIN_LIB_DIR lib/${MESHLIB_LIB_SUBDIR})
+  set(MR_PY_LIB_DIR lib/${MESHLIB_LIB_SUBDIR}/meshlib)
   set(MR_CONFIG_DIR lib/cmake/MeshLib)
   set(MR_RESOURCES_DIR share/${MESHLIB_PROJECT_NAME})
   set(MR_FONTS_DIR share/${MESHLIB_PROJECT_NAME}/fonts)
   # set rpath manually for both executables and shared libraries
   # related issue: https://gitlab.kitware.com/cmake/cmake/-/issues/23727
-  list(APPEND CMAKE_INSTALL_RPATH "$ORIGIN" "$ORIGIN/.." "$ORIGIN/../lib" "$ORIGIN/../lib/${MESHLIB_PROJECT_NAME}")
+  list(APPEND CMAKE_INSTALL_RPATH "$ORIGIN" "$ORIGIN/.." "$ORIGIN/../lib" "$ORIGIN/../lib/${MESHLIB_LIB_SUBDIR}")
 ELSEIF(NOT APPLE)
   include(GNUInstallDirs)
   set(MR_BIN_DIR "${CMAKE_INSTALL_BINDIR}")
   set(MR_INCLUDE_DIR "${CMAKE_INSTALL_INCLUDEDIR}/MeshLib")
-  set(MR_MAIN_LIB_DIR "${CMAKE_INSTALL_LIBDIR}/${MESHLIB_PROJECT_NAME}")
-  set(MR_PY_LIB_DIR "${CMAKE_INSTALL_LIBDIR}/${MESHLIB_PROJECT_NAME}/meshlib")
+  set(MR_MAIN_LIB_DIR "${CMAKE_INSTALL_LIBDIR}/${MESHLIB_LIB_SUBDIR}")
+  set(MR_PY_LIB_DIR "${CMAKE_INSTALL_LIBDIR}/${MESHLIB_LIB_SUBDIR}/meshlib")
   set(MR_CONFIG_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/MeshLib")
   set(MR_RESOURCES_DIR "${CMAKE_INSTALL_DATADIR}/${MESHLIB_PROJECT_NAME}")
   set(MR_FONTS_DIR "${CMAKE_INSTALL_DATADIR}/${MESHLIB_PROJECT_NAME}/fonts")
@@ -209,14 +186,13 @@ ELSE()
   # TODO: correct directory structure for macOS
   # TODO: https://cmake.org/cmake/help/latest/prop_tgt/RESOURCE.html
   IF(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    set(MR_ROOT "./Library/Frameworks/MeshLib.framework/Versions/${MESHLIB_VERSION}")
-    set(MR_BIN_DIR "${MR_ROOT}/bin")
-    set(MR_INCLUDE_DIR "${MR_ROOT}/include")
-    set(MR_MAIN_LIB_DIR "${MR_ROOT}/lib")
-    set(MR_PY_LIB_DIR "${MR_ROOT}/lib/meshlib")
-    set(MR_RESOURCES_DIR "${MR_ROOT}/Resources")
-    set(MR_FONTS_DIR "${MR_ROOT}/Resources/fonts")
-    set(MR_CONFIG_DIR "${MR_ROOT}/Resources/cmake")
+    set(MR_BIN_DIR       "bin")
+    set(MR_INCLUDE_DIR   "include")
+    set(MR_MAIN_LIB_DIR  "lib")
+    set(MR_PY_LIB_DIR    "lib/meshlib")
+    set(MR_RESOURCES_DIR "Resources")
+    set(MR_CONFIG_DIR    "Resources/cmake")
+    set(MR_FONTS_DIR     "Resources/fonts")
   ELSE()
     set(MESHLIB_MACOS_INSTALL_PATH "./usr/local" CACHE PATH "")
     set(MR_ROOT ${MESHLIB_MACOS_INSTALL_PATH})
@@ -253,10 +229,6 @@ IF(MESHLIB_BUILD_VOXELS)
 ENDIF()
 
 IF(MESHLIB_BUILD_MRVIEWER)
-  IF(NOT MR_EMSCRIPTEN)
-    find_package(glfw3 CONFIG REQUIRED)
-  ENDIF()
-
   IF(MR_EMSCRIPTEN)
     include(EmscriptenHelpers)
     mr_emscripten_pack_directory("${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets" "/")
@@ -338,7 +310,7 @@ ENDIF()
 include(CMakePackageConfigHelpers)
 configure_package_config_file(meshlib-config.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/meshlib-config.cmake
   INSTALL_DESTINATION ${MR_CONFIG_DIR}
-  PATH_VARS CMAKE_INSTALL_INCLUDEDIR CMAKE_INSTALL_LIBDIR MR_INCLUDE_DIR MR_MAIN_LIB_DIR
+  PATH_VARS CMAKE_INSTALL_INCLUDEDIR CMAKE_INSTALL_LIBDIR MR_INCLUDE_DIR MR_MAIN_LIB_DIR MR_RESOURCES_DIR
 )
 
 write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/meshlib-config-version.cmake
@@ -353,9 +325,10 @@ install(
   DESTINATION ${MR_CONFIG_DIR}
 )
 
-IF(EMSCRIPTEN)
-  install(FILES cmake/Modules/EmscriptenHelpers.cmake DESTINATION ${MR_CONFIG_DIR})
-ENDIF()
+install(
+  DIRECTORY cmake/Modules
+  DESTINATION ${MR_CONFIG_DIR}
+)
 
 IF(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   set(CPACK_GENERATOR "DRAGNDROP")

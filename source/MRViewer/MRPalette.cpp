@@ -2,7 +2,9 @@
 #include "ImGuiMenu.h"
 #include "MRMesh/MRFinally.h"
 #include "MRViewer/MRImGuiVectorOperators.h"
+#include "MRViewer/MRUIStyle.h"
 #include "MRViewer/MRViewer.h"
+#include "ImGuiHelpers.h"
 #include "imgui_internal.h"
 #include "MRViewport.h"
 #include "MRUIRectAllocator.h"
@@ -375,6 +377,14 @@ void Palette::setFilterType( FilterType type )
 
 void Palette::draw( const std::string& windowName, const ImVec2& pose, const ImVec2& size, bool onlyTopHalf )
 {
+    if ( drawDelayFrames_ > 0 )
+    {
+        drawDelayFrames_--;
+        // Make sure we don't sleep until the draw delay passes.
+        getViewerInstance().incrementForceRedrawFrames();
+        return;
+    }
+
     const auto menu = ImGuiMenu::instance();
     const auto& viewportSize = Viewport::get().getViewportRect();
 
@@ -1133,6 +1143,12 @@ Palette::Label::Label( float val, std::string text_ )
 {
     value = val;
     text = std::move( text_ );
+}
+
+void Palette::setDrawDelayFrames( int numFrames )
+{
+    if ( numFrames > drawDelayFrames_ )
+        drawDelayFrames_ = numFrames;
 }
 
 const std::vector<std::string>& PalettePresets::getPresetNames()

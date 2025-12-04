@@ -4,6 +4,7 @@
 #include "MRGLMacro.h"
 #include "MRGLStaticHolder.h"
 #include "MRMouseController.h"
+#include "MRViewer/MRUIStyle.h"
 #include "MRViewportCornerController.h"
 #include "MRViewportGlobalBasis.h"
 #include <MRMesh/MRMesh.h>
@@ -88,7 +89,7 @@ void Viewport::init()
     auto sceneCenter = sceneBox_.valid() ? sceneBox_.center() : Vector3f();
     setRotationPivot_( params_.staticRotationPivot ? *params_.staticRotationPivot : sceneCenter );
     setupProjMatrix_();
-    setupAxesProjMatrix_();
+    setupAxesViewProjMatrix_();
 }
 
 void Viewport::shut()
@@ -479,7 +480,7 @@ void Viewport::setupView()
 {
     setupViewMatrix_();
     setupProjMatrix_();
-    setupAxesProjMatrix_();
+    setupAxesViewProjMatrix_();
 }
 
 void Viewport::preDraw()
@@ -650,7 +651,7 @@ void Viewport::initBaseAxes()
     // find relative points for axes
     auto scaling = 1.0f;
     if ( auto menu = getViewerInstance().getMenuPlugin() )
-        scaling = menu->menu_scaling();
+        scaling = menu->menu_scaling(); // Note! This function gets called early, so `UI::scale()` isn't yet set at this point.
     float axesX, axesY;
     if(pixelXoffset_ < 0)
         axesX = width( viewportRect_ ) + pixelXoffset_ * scaling;
@@ -671,23 +672,23 @@ void Viewport::drawAxesAndViewController() const
     if ( basisVisible || getViewerInstance().basisViewController )
     {
         // compute inverse in double precision to avoid NaN for very small scales
-        auto fullInversedM = Matrix4f( ( Matrix4d( axesProjMat_ ) * Matrix4d( viewM_ ) ).inverse() );
+        auto fullInversedM = Matrix4f( ( Matrix4d( axesProjMat_ ) * Matrix4d( axesViewMat_ ) ).inverse() );
         auto pos = to3dim( basisAxesPos_ ); pos.z = 0.5f;
         auto transBase = fullInversedM( viewportSpaceToClipSpace( pos ) );
         auto transSide = fullInversedM( viewportSpaceToClipSpace( pos + to3dim( Vector2f::diagonal( basisAxesSize_ ) ) ) );
 
         auto invRot = AffineXf3f::linear( Matrix3f( params_.cameraTrackballAngle ) ).inverse();
 
-        float scale = (transSide - transBase).length();
+        float scale = ( transSide - transBase ).length();
         const auto basisAxesXf = AffineXf3f( Matrix3f::scale( scale ), transBase );
         if ( basisVisible )
         {
             getViewerInstance().basisAxes->setXf( basisAxesXf, id );
-            draw( *getViewerInstance().basisAxes, basisAxesXf, axesProjMat_, DepthFunction::Always );
+            drawOrthoFixedPos( *getViewerInstance().basisAxes, basisAxesXf, DepthFunction::Always );
             for ( const auto& child : getViewerInstance().basisAxes->children() )
             {
                 if ( auto visualChild = child->asType<VisualObject>() )
-                    draw( *visualChild, basisAxesXf, axesProjMat_, DepthFunction::Always );
+                    drawOrthoFixedPos( *visualChild, basisAxesXf, DepthFunction::Always );
             }
         }
         if ( getViewerInstance().basisViewController )
@@ -696,11 +697,11 @@ void Viewport::drawAxesAndViewController() const
         }
         if ( basisVisible )
         {
-            draw( *getViewerInstance().basisAxes, basisAxesXf, axesProjMat_ );
+            drawOrthoFixedPos( *getViewerInstance().basisAxes, basisAxesXf );
             for ( const auto& child : getViewerInstance().basisAxes->children() )
             {
                 if ( auto visualChild = child->asType<VisualObject>() )
-                    draw( *visualChild, basisAxesXf, axesProjMat_ );
+                    drawOrthoFixedPos( *visualChild, basisAxesXf );
             }
         }
     }
@@ -728,11 +729,7 @@ void Viewport::drawGlobalBasis() const
     if ( params_.globalBasisScaleMode == Parameters::GlobalBasisScaleMode::Auto )
         length = params_.objectScale * 0.5f;
 
-    float scaling = 1.0f;
-    if ( auto menu = viewer.getMenuPlugin() )
-        scaling = menu->menu_scaling();
-
-    viewer.globalBasis->setAxesProps( length, scaling * getPixelSizeAtPoint( Vector3f() ) * 2.0f, id );
+    viewer.globalBasis->setAxesProps( length, UI::scale() * getPixelSizeAtPoint( Vector3f() ) * 2.0f, id );
     viewer.globalBasis->draw( *this );
 }
 

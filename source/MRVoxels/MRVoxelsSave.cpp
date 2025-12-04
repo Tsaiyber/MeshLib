@@ -312,19 +312,19 @@ Expected<void> gridToAnySupportedFormat( const FloatGrid& grid, const Vector3i& 
 }
 
 template <VoxelsSaver voxelsSaver>
-Expected<void> toVoxels( const Object& object, const std::filesystem::path& path, const ProgressCallback& callback )
+Expected<void> toVoxels( const Object& object, const std::filesystem::path& path, const ObjectSave::Settings& settings )
 {
     const auto objVoxels = getAllObjectsInTree<ObjectVoxels>( const_cast<Object*>( &object ), ObjectSelectivityType::Selectable );
     if ( objVoxels.empty() )
-        return voxelsSaver( {}, path, callback );
+        return voxelsSaver( {}, path, settings.progress );
     else if ( objVoxels.size() > 1 )
         return unexpected( "Multiple voxel grids in the given object" );
 
     const auto& objVoxel = objVoxels.front();
     if ( !objVoxel )
-        return voxelsSaver( {}, path, callback );
+        return voxelsSaver( {}, path, settings.progress );
 
-    return voxelsSaver( objVoxel->vdbVolume(), path, callback );
+    return voxelsSaver( objVoxel->vdbVolume(), path, settings.progress );
 }
 
 #define MR_ADD_VOXELS_SAVER( filter, saver )                   \
@@ -420,7 +420,7 @@ Expected<void> saveAllSlicesToImage( const VdbVolume& vdbVolume, const SavingSet
     const size_t maxNumChars = std::to_string( numSlices ).size();
     for ( int i = 0; i < numSlices; ++i )
     {
-        const auto res = saveSliceToImage( settings.path / fmt::format( runtimeFmt( settings.format ), i, maxNumChars ), vdbVolume, settings.slicePlane, i );
+        const auto res = saveSliceToImage( settings.path / fmt::format( fmt::runtime( settings.format ), i, maxNumChars ), vdbVolume, settings.slicePlane, i );
         if ( !res )
             return res;
 
@@ -435,9 +435,9 @@ Expected<void> saveAllSlicesToImage( const VdbVolume& vdbVolume, const SavingSet
 
 } // namespace VoxelsSave
 
-Expected<void> saveObjectVoxelsToFile( const Object& object, const std::filesystem::path& path, const ProgressCallback& callback )
+Expected<void> saveObjectVoxelsToFile( const Object& object, const std::filesystem::path& path, const ObjectSave::Settings& settings )
 {
-    return VoxelsSave::toVoxels<VoxelsSave::toAnySupportedFormat>( object, path, callback );
+    return VoxelsSave::toVoxels<VoxelsSave::toAnySupportedFormat>( object, path, settings );
 }
 
 } // namespace MR

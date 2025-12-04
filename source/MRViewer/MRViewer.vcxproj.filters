@@ -178,9 +178,6 @@
     <ClCompile Include="MRRibbonButtonDrawer.cpp">
       <Filter>RibbonMenu</Filter>
     </ClCompile>
-    <ClCompile Include="MRMenu.cpp">
-      <Filter>Plugins</Filter>
-    </ClCompile>
     <ClCompile Include="MRDemoPlugin.cpp">
       <Filter>Plugins</Filter>
     </ClCompile>
@@ -421,9 +418,6 @@
     <ClCompile Include="MRMacOSOpenDocumentsHandler.cpp">
       <Filter>Viewer</Filter>
     </ClCompile>
-    <ClCompile Include="MRCPRTests.cpp">
-      <Filter>Requests</Filter>
-    </ClCompile>
     <ClCompile Include="MRClipboard.cpp">
       <Filter>Helpers</Filter>
     </ClCompile>
@@ -441,9 +435,6 @@
     </ClCompile>
     <ClCompile Include="MRSceneReorder.cpp">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="MRProjectMeshAttributes.cpp">
-      <Filter>Helpers</Filter>
     </ClCompile>
     <ClCompile Include="MRViewerTitle.cpp">
       <Filter>Viewer</Filter>
@@ -484,6 +475,33 @@
     <ClCompile Include="MRViewportGlobalBasis.cpp">
       <Filter>Viewer</Filter>
     </ClCompile>
+    <ClCompile Include="MRGladGlfw.cpp">
+      <Filter>Render</Filter>
+    </ClCompile>
+    <ClCompile Include="MRRenderClickableRect.cpp">
+      <Filter>Render\Implementations</Filter>
+    </ClCompile>
+    <ClCompile Include="MRUIQualityControl.cpp">
+      <Filter>UIStyle</Filter>
+    </ClCompile>
+    <ClCompile Include="MRItemEnabledPerViewport.cpp">
+      <Filter>RibbonMenu</Filter>
+    </ClCompile>
+    <ClCompile Include="MRRibbonFontHolder.cpp">
+      <Filter>RibbonMenu</Filter>
+    </ClCompile>
+    <ClCompile Include="MRFileDialogPortal.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="MRAncillaryPlane.cpp">
+      <Filter>Helpers</Filter>
+    </ClCompile>
+    <ClCompile Include="MRDepthPeelingGL.cpp">
+      <Filter>Render</Filter>
+    </ClCompile>
+    <ClCompile Include="MRImGuiMultiViewport.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ImGuiHelpers.h">
@@ -494,9 +512,6 @@
     </ClInclude>
     <ClInclude Include="ImGuiMenu.h">
       <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="MRMenu.h">
-      <Filter>Plugins</Filter>
     </ClInclude>
     <ClInclude Include="MRViewer.h">
       <Filter>Viewer</Filter>
@@ -906,9 +921,6 @@
     <ClInclude Include="MRSceneReorder.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="MRProjectMeshAttributes.h">
-      <Filter>Helpers</Filter>
-    </ClInclude>
     <ClInclude Include="MROpenObjects.h">
       <Filter>IO</Filter>
     </ClInclude>
@@ -944,6 +956,37 @@
     <ClInclude Include="MRVisualObjectTag.h" />
     <ClInclude Include="MRViewportGlobalBasis.h">
       <Filter>Viewer</Filter>
+    </ClInclude>
+    <ClInclude Include="MRRenderClickableRect.h">
+      <Filter>Render\Implementations</Filter>
+    </ClInclude>
+    <ClInclude Include="MRUIQualityControl.h">
+      <Filter>UIStyle</Filter>
+    </ClInclude>
+    <ClInclude Include="MRItemEnabledPerViewport.h">
+      <Filter>RibbonMenu</Filter>
+    </ClInclude>
+    <ClInclude Include="MRWebResponseCallback.h">
+      <Filter>Requests</Filter>
+    </ClInclude>
+    <ClInclude Include="MRViewerSignals.h">
+      <Filter>Viewer</Filter>
+    </ClInclude>
+    <ClInclude Include="MRFileLoadOptions.h">
+      <Filter>Viewer</Filter>
+    </ClInclude>
+    <ClInclude Include="MRRibbonFontHolder.h">
+      <Filter>RibbonMenu</Filter>
+    </ClInclude>
+    <ClInclude Include="MRFileDialogPortal.h" />
+    <ClInclude Include="MRAncillaryPlane.h">
+      <Filter>Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="MRDepthPeelingGL.h">
+      <Filter>Render</Filter>
+    </ClInclude>
+    <ClInclude Include="MRImGuiMultiViewport.h">
+      <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

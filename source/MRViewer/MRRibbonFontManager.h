@@ -1,5 +1,6 @@
 #pragma once
 #include "exports.h"
+#include "MRViewerFwd.h"
 #include "MRImGui.h"
 #include <array>
 #include <filesystem>
@@ -16,6 +17,7 @@ public:
     {
         Default,
         Small,
+        Middle,
         SemiBold,
         Icons,
         Big,
@@ -29,6 +31,9 @@ public:
     enum class FontFile
     {
         Regular,
+#ifndef __EMSCRIPTEN__
+        RegularSC, // Regular with Simple Chinese
+#endif
         SemiBold,
         Monospace,
         Icons,
@@ -40,7 +45,7 @@ public:
     MRVIEWER_API RibbonFontManager();
 
     /// load all fonts using in ribbon menu
-    MRVIEWER_API void loadAllFonts( ImWchar* charRanges, float scaling );
+    MRVIEWER_API void loadAllFonts( ImWchar* charRanges );
 
     /// get font by font type
     MRVIEWER_API ImFont* getFontByType( FontType type ) const;
@@ -61,15 +66,26 @@ public:
     /// (need to avoid dynamic cast menu to ribbon menu)
     MRVIEWER_API static ImFont* getFontByTypeStatic( FontType type );
 
+    /// get font by font type
+    /// (need to avoid dynamic cast menu to ribbon menu)
+    MRVIEWER_API static FontAndSize getFontAndSizeByTypeStatic( FontType type );
+
     /// initialize static holder for easier access to ribbon fonts
     /// (need to avoid dynamic cast menu to ribbon menu)
     MRVIEWER_API static void initFontManagerInstance( RibbonFontManager* ribbonFontManager );
 
 private:
+
+#ifndef __EMSCRIPTEN__
+    static constexpr RibbonFontManager::FontFile cFontFileRegular_ = RibbonFontManager::FontFile::RegularSC;
+#else
+    static constexpr RibbonFontManager::FontFile cFontFileRegular_ = RibbonFontManager::FontFile::Regular;
+#endif
+
     FontFilePaths fontPaths_;
     struct FontData
     {
-        FontFile fontFile{ FontFile::Regular }; // what file type to use for this font
+        FontFile fontFile{ cFontFileRegular_ }; // what file type to use for this font
         Vector2f scaledOffset; // offset that is used for each glyph while creating atlas (updates in `updateFontsScaledOffset_`), should respect font size with scaling
         ImFont* fontPtr{ nullptr }; // pointer to loaded font, nullptr means that font was not loaded
     };
@@ -79,16 +95,9 @@ private:
     static RibbonFontManager*& getFontManagerInstance_();
 
     /// calculates font glyph shift
-    void updateFontsScaledOffset_( float scaling );
+    void updateFontsScaledOffset_();
 
-    void loadFont_( FontType type, const ImWchar* ranges, float scaling );
-
-    struct CustomGlyph
-    {
-        std::function<void( unsigned char* texData, int texW )> render;
-    };
-    void addCustomGlyphs_( FontType font, float scaling, std::vector<CustomGlyph>& glyphs );
-    void renderCustomGlyphsToAtlas_( const std::vector<CustomGlyph>& glyphs );
+    void loadFont_( FontType type, const ImWchar* ranges );
 };
 
 }
